@@ -1,26 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:backgammon_score_tracker/core/theme/app_theme.dart';
-import 'package:backgammon_score_tracker/core/routes/app_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/home_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/splash_screen.dart';
+import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: "AIzaSyAu6HdQFHoAQo8WjnAjdzb3c3_geeiXtf8",
-        appId: "1:643090063875:android:ce968e49acd930fa956436",
-        messagingSenderId: "643090063875",
-        projectId: "backgammon-3e34c",
-        storageBucket: "backgammon-3e34c.firebasestorage.app",
-      ),
-    );
-  } catch (e) {
-    debugPrint('Firebase initialization error: $e');
-  }
-
-  runApp(const MyApp());
+  await Firebase.initializeApp();
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -28,13 +24,129 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
+    final lightTheme = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF8B4513), // Kahverengi
+        primary: const Color(0xFF8B4513),
+        secondary: const Color(0xFFDEB887), // Bej
+        tertiary: const Color(0xFFD2691E), // Koyu Turuncu
+        brightness: Brightness.light,
+      ),
+      cardColor: Colors.white,
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        filled: true,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+
+    final darkTheme = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF8B4513), // Kahverengi
+        primary: const Color(0xFFDEB887), // Bej
+        secondary: const Color(0xFFD2691E), // Koyu Turuncu
+        tertiary: const Color(0xFFCD853F), // Açık Kahverengi
+        brightness: Brightness.dark,
+      ),
+      cardColor: Colors.grey[900],
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        filled: true,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+
     return MaterialApp(
-      title: 'Backgammon Score Tracker',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      onGenerateRoute: AppRouter.onGenerateRoute,
-      initialRoute: AppRouter.splash,
+      title: 'Tavla Skor Takip',
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeProvider.getThemeMode(),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasData) {
+          return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(snapshot.data?.uid)
+                .snapshots(),
+            builder: (context, userSnapshot) {
+              if (userSnapshot.hasData) {
+                final userData =
+                    userSnapshot.data?.data() as Map<String, dynamic>?;
+                final themeMode = userData?['themeMode'] ?? 'system';
+
+                ThemeMode selectedThemeMode;
+                switch (themeMode) {
+                  case 'dark':
+                    selectedThemeMode = ThemeMode.dark;
+                    break;
+                  case 'light':
+                    selectedThemeMode = ThemeMode.light;
+                    break;
+                  default:
+                    selectedThemeMode = ThemeMode.system;
+                }
+
+                return MaterialApp(
+                  title: 'Tavla Skor Takip',
+                  theme: Theme.of(context),
+                  darkTheme: Theme.of(context),
+                  themeMode: selectedThemeMode,
+                  home: const HomeScreen(),
+                );
+              }
+              return MaterialApp(
+                title: 'Tavla Skor Takip',
+                theme: Theme.of(context),
+                darkTheme: Theme.of(context),
+                home: const HomeScreen(),
+              );
+            },
+          );
+        }
+
+        return MaterialApp(
+          title: 'Tavla Skor Takip',
+          theme: Theme.of(context),
+          darkTheme: Theme.of(context),
+          home: const LoginScreen(),
+        );
+      },
     );
   }
 }

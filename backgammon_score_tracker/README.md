@@ -22,10 +22,10 @@ Bu uygulama, arkadaşlar arasında oynanan tavla oyunlarının skorlarını ve i
   - Oyuncu istatistikleri
 
 ### İstatistikler
-- Toplam oyun sayısı
-- Kazanma oranı
-- En çok oynanan rakip
-- En yüksek skor
+  - Toplam oyun sayısı
+  - Kazanma oranı
+  - En çok oynanan rakip
+  - En yüksek skor
 - Oyuncu bazlı istatistikler
   - Maç sayısı
   - Kazanma oranı

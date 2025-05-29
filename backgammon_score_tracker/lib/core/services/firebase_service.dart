@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:backgammon_score_tracker/core/error/error_service.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -13,8 +14,33 @@ class FirebaseService {
         email: email,
         password: password,
       );
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'user-not-found':
+          errorMessage = ErrorService.authUserNotFound;
+          break;
+        case 'wrong-password':
+          errorMessage = ErrorService.authWrongPassword;
+          break;
+        case 'invalid-email':
+          errorMessage = ErrorService.authInvalidEmail;
+          break;
+        case 'user-disabled':
+          errorMessage = ErrorService.authUserDisabled;
+          break;
+        case 'too-many-requests':
+          errorMessage = ErrorService.authTooManyRequests;
+          break;
+        case 'network-request-failed':
+          errorMessage = ErrorService.authNetworkRequestFailed;
+          break;
+        default:
+          errorMessage = ErrorService.authFailed;
+      }
+      throw Exception(errorMessage);
     } catch (e) {
-      throw Exception('Giriş yapılırken bir hata oluştu: $e');
+      throw Exception(ErrorService.generalError);
     }
   }
 
@@ -29,7 +55,7 @@ class FirebaseService {
       debugPrint('Kullanıcı oluşturuldu: ${userCredential.user?.uid}');
 
       if (userCredential.user == null) {
-        throw Exception('Kullanıcı oluşturulamadı');
+        throw Exception(ErrorService.authFailed);
       }
 
       debugPrint('E-posta doğrulama maili gönderiliyor...');
@@ -50,30 +76,41 @@ class FirebaseService {
       return userCredential;
     } on FirebaseAuthException catch (e) {
       debugPrint('Firebase Auth Hatası: ${e.code} - ${e.message}');
-      String message;
+      String errorMessage;
       switch (e.code) {
         case 'email-already-in-use':
-          message = 'Bu e-posta adresi zaten kullanımda';
+          errorMessage = ErrorService.authEmailAlreadyInUse;
           break;
         case 'invalid-email':
-          message = 'Geçersiz e-posta adresi';
+          errorMessage = ErrorService.authInvalidEmail;
           break;
         case 'operation-not-allowed':
-          message = 'E-posta/şifre girişi etkin değil';
+          errorMessage = ErrorService.authOperationNotAllowed;
           break;
         case 'weak-password':
-          message = 'Şifre çok zayıf';
+          errorMessage = ErrorService.authWeakPassword;
           break;
         default:
-          message = 'Kayıt olurken bir hata oluştu: ${e.message}';
+          errorMessage = ErrorService.authFailed;
       }
-      throw Exception(message);
+      throw Exception(errorMessage);
     } on FirebaseException catch (e) {
       debugPrint('Firebase Hatası: ${e.code} - ${e.message}');
-      throw Exception('Firebase hatası: ${e.message}');
+      String errorMessage;
+      switch (e.code) {
+        case 'permission-denied':
+          errorMessage = ErrorService.firestorePermissionDenied;
+          break;
+        case 'unavailable':
+          errorMessage = ErrorService.firestoreUnavailable;
+          break;
+        default:
+          errorMessage = ErrorService.generalError;
+      }
+      throw Exception(errorMessage);
     } catch (e) {
       debugPrint('Genel Hata: $e');
-      throw Exception('Kayıt olurken bir hata oluştu: $e');
+      throw Exception(ErrorService.generalError);
     }
   }
 
@@ -81,7 +118,7 @@ class FirebaseService {
     try {
       await _auth.signOut();
     } catch (e) {
-      throw Exception('Çıkış yapılırken bir hata oluştu: $e');
+      throw Exception(ErrorService.generalError);
     }
   }
 
@@ -93,16 +130,34 @@ class FirebaseService {
     required int player2Score,
   }) async {
     try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) {
+        throw Exception(ErrorService.authUserNotFound);
+      }
+
       await _firestore.collection('games').add({
         'player1': player1,
         'player2': player2,
         'player1Score': player1Score,
         'player2Score': player2Score,
         'timestamp': FieldValue.serverTimestamp(),
-        'userId': _auth.currentUser?.uid,
+        'userId': userId,
       });
+    } on FirebaseException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'permission-denied':
+          errorMessage = ErrorService.firestorePermissionDenied;
+          break;
+        case 'unavailable':
+          errorMessage = ErrorService.firestoreUnavailable;
+          break;
+        default:
+          errorMessage = ErrorService.gameSaveFailed;
+      }
+      throw Exception(errorMessage);
     } catch (e) {
-      throw Exception('Oyun kaydedilirken bir hata oluştu: $e');
+      throw Exception(ErrorService.generalError);
     }
   }
 

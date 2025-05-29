@@ -3,6 +3,10 @@ import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_icon.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,12 +20,15 @@ class _LoginScreenState extends State<LoginScreen>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _firebaseService = FirebaseService();
   bool _isLoading = false;
   bool _isSignUp = false;
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
@@ -56,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen>
     _controller.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -91,6 +99,16 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Şifreler eşleşmiyor'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -124,6 +142,64 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ErrorService.authEmailRequired)),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorService.authPasswordResetEmailSent)),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'user-not-found':
+          errorMessage = ErrorService.authUserNotFound;
+          break;
+        case 'invalid-email':
+          errorMessage = ErrorService.authInvalidEmail;
+          break;
+        case 'user-disabled':
+          errorMessage = ErrorService.authUserDisabled;
+          break;
+        case 'too-many-requests':
+          errorMessage = ErrorService.authTooManyRequests;
+          break;
+        default:
+          errorMessage = ErrorService.authFailed;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorService.generalError)),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -137,104 +213,262 @@ class _LoginScreenState extends State<LoginScreen>
                 child: SlideTransition(
                   position: _slideAnimation,
                   child: Card(
-                    elevation: 8,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const DiceIcon(
-                              size: 80,
-                              color: Colors.brown,
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              _isSignUp ? 'Hesap Oluştur' : 'Giriş Yap',
-                              style: Theme.of(context).textTheme.displayMedium,
-                            ),
-                            const SizedBox(height: 32),
-                            TextFormField(
-                              controller: _emailController,
-                              decoration: const InputDecoration(
-                                labelText: 'E-posta',
-                                prefixIcon: Icon(Icons.email),
-                              ),
-                              keyboardType: TextInputType.emailAddress,
-                              enabled: !_isLoading,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'E-posta adresi gerekli';
-                                }
-                                if (!value.contains('@')) {
-                                  return 'Geçerli bir e-posta adresi girin';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _passwordController,
-                              decoration: const InputDecoration(
-                                labelText: 'Şifre',
-                                prefixIcon: Icon(Icons.lock),
-                              ),
-                              obscureText: true,
-                              enabled: !_isLoading,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Şifre gerekli';
-                                }
-                                if (value.length < 6) {
-                                  return 'Şifre en az 6 karakter olmalı';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 24),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed: _isLoading
-                                    ? null
-                                    : (_isSignUp
-                                        ? _handleSignUp
-                                        : _handleLogin),
-                                icon: _isLoading
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                  Colors.white),
-                                        ),
-                                      )
-                                    : Icon(_isSignUp
-                                        ? Icons.person_add
-                                        : Icons.login),
-                                label: Text(
-                                    _isSignUp ? 'Hesap Oluştur' : 'Giriş Yap'),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextButton.icon(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () {
-                                      setState(() => _isSignUp = !_isSignUp);
-                                    },
-                              icon: Icon(
-                                  _isSignUp ? Icons.login : Icons.person_add),
-                              label: Text(
-                                  _isSignUp ? 'Giriş Yap' : 'Hesap Oluştur'),
-                            ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Theme.of(context)
+                                .colorScheme
+                                .surfaceVariant
+                                .withOpacity(0.7),
+                            Theme.of(context)
+                                .colorScheme
+                                .surfaceVariant
+                                .withOpacity(0.5),
                           ],
+                        ),
+                        border: Border.all(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outline
+                              .withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: const DiceIcon(
+                                          size: 40,
+                                          color: Colors.brown,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        _isSignUp
+                                            ? 'Hesap Oluştur'
+                                            : 'Giriş Yap',
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 32),
+                                  TextFormField(
+                                    controller: _emailController,
+                                    decoration: InputDecoration(
+                                      labelText: 'E-posta',
+                                      prefixIcon: Icon(
+                                        Icons.email,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    keyboardType: TextInputType.emailAddress,
+                                    enabled: !_isLoading,
+                                    validator: ValidationService.validateEmail,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextFormField(
+                                    controller: _passwordController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Şifre',
+                                      prefixIcon: Icon(
+                                        Icons.lock,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                      ),
+                                      suffixIcon: IconButton(
+                                        icon: Icon(
+                                          _obscurePassword
+                                              ? Icons.visibility
+                                              : Icons.visibility_off,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _obscurePassword =
+                                                !_obscurePassword;
+                                          });
+                                        },
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    obscureText: _obscurePassword,
+                                    enabled: !_isLoading,
+                                    validator: _isSignUp
+                                        ? ValidationService.validatePassword
+                                        : (value) {
+                                            if (value == null ||
+                                                value.isEmpty) {
+                                              return ErrorService
+                                                  .authPasswordRequired;
+                                            }
+                                            return null;
+                                          },
+                                  ),
+                                  if (_isSignUp) ...[
+                                    const SizedBox(height: 16),
+                                    TextFormField(
+                                      controller: _confirmPasswordController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Şifre Tekrar',
+                                        prefixIcon: Icon(
+                                          Icons.lock_outline,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            _obscureConfirmPassword
+                                                ? Icons.visibility
+                                                : Icons.visibility_off,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              _obscureConfirmPassword =
+                                                  !_obscureConfirmPassword;
+                                            });
+                                          },
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      obscureText: _obscureConfirmPassword,
+                                      enabled: !_isLoading,
+                                      validator: (value) {
+                                        if (_isSignUp) {
+                                          if (value == null || value.isEmpty) {
+                                            return ErrorService
+                                                .authPasswordRequired;
+                                          }
+                                          if (value !=
+                                              _passwordController.text) {
+                                            return 'Şifreler eşleşmiyor';
+                                          }
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ],
+                                  const SizedBox(height: 24),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: FilledButton.icon(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : (_isSignUp
+                                              ? _handleSignUp
+                                              : _handleLogin),
+                                      icon: _isLoading
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(Colors.white),
+                                              ),
+                                            )
+                                          : Icon(_isSignUp
+                                              ? Icons.person_add
+                                              : Icons.login),
+                                      label: Text(_isSignUp
+                                          ? 'Hesap Oluştur'
+                                          : 'Giriş Yap'),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextButton.icon(
+                                    onPressed: _isLoading
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _isSignUp = !_isSignUp;
+                                              if (!_isSignUp) {
+                                                _confirmPasswordController
+                                                    .clear();
+                                              }
+                                            });
+                                          },
+                                    icon: Icon(_isSignUp
+                                        ? Icons.login
+                                        : Icons.person_add),
+                                    label: Text(_isSignUp
+                                        ? 'Giriş Yap'
+                                        : 'Hesap Oluştur'),
+                                  ),
+                                  if (!_isSignUp) ...[
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed:
+                                            _isLoading ? null : _resetPassword,
+                                        child: Text(
+                                          'Şifremi Unuttum',
+                                          style: TextStyle(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
