@@ -1,78 +1,126 @@
-# Tavla Skor Takip
+# Tavla Skor Takip Uygulaması
 
-Tavla Skor Takip, oyuncuların tavla maçlarını kaydetmelerine, skorlarını takip etmelerine ve istatistiklerini görüntülemelerine olanak sağlayan bir Flutter uygulamasıdır.
+Bu uygulama, arkadaşlar arasında oynanan tavla oyunlarının skorlarını ve istatistiklerini takip etmek için geliştirilmiş bir Flutter uygulamasıdır.
 
 ## Özellikler
 
-- 🔐 Güvenli kullanıcı kimlik doğrulama
-- 👥 Oyuncu yönetimi
-- 🎲 Maç kayıtları
-- 📊 Detaylı istatistikler
-- 🎨 Modern ve kullanıcı dostu arayüz
-- 🌓 Açık/Koyu tema desteği
-- 🔄 Otomatik oturum yönetimi
-- 📱 Responsive tasarım
+### Kullanıcı Yönetimi
+- E-posta ve şifre ile kayıt ve giriş
+- Şifremi unuttum özelliği
+- Profil yönetimi
+  - Kullanıcı adı düzenleme
+  - Tema tercihleri (Aydınlık/Karanlık/Sistem)
+  - E-posta görüntüleme
 
-## Oturum Yönetimi
+### Oyun Yönetimi
+- Yeni oyun kaydetme
+- Oyun düzenleme
+- Oyun detaylarını görüntüleme
+- Oyuncu yönetimi
+  - Oyuncu ekleme
+  - Oyuncu düzenleme
+  - Oyuncu istatistikleri
 
-Uygulama, güvenli bir oturum yönetimi sistemi içerir:
+### İstatistikler
+- Toplam oyun sayısı
+- Kazanma oranı
+- En çok oynanan rakip
+- En yüksek skor
+- Oyuncu bazlı istatistikler
+  - Maç sayısı
+  - Kazanma oranı
+  - Rakip analizi
 
-- 30 dakika hareketsizlik sonrası otomatik oturum kapatma
-- Uygulama arka plana alındığında oturum takibi
-- Kullanıcı etkileşimlerinde oturum süresinin yenilenmesi
-- Oturum sona erdiğinde kullanıcıya bildirim
-
-## Güvenlik Özellikleri
-
-- Firebase Authentication ile güvenli kimlik doğrulama
-- Şifre sıfırlama desteği
-- Oturum güvenliği
-- Veri şifreleme
+### Arayüz
+- Modern ve kullanıcı dostu tasarım
+- Tavla temalı arka plan
+- Responsive tasarım
+- Animasyonlu geçişler
+- Özelleştirilebilir tema
 
 ## Kurulum
 
-1. Flutter SDK'yı yükleyin
+1. Flutter SDK'yı yükleyin (en az 3.0.0 sürümü)
 2. Projeyi klonlayın:
    ```bash
-   git clone https://github.com/Uricaryn/backgammon_score_tracker.git
+   git clone https://github.com/yourusername/backgammon_score_tracker.git
    ```
-3. Bağımlılıkları yükleyin:
+3. Proje dizinine gidin:
+   ```bash
+   cd backgammon_score_tracker
+   ```
+4. Bağımlılıkları yükleyin:
    ```bash
    flutter pub get
    ```
-4. Firebase projenizi yapılandırın:
+5. Firebase projenizi oluşturun ve yapılandırın:
    - Firebase Console'da yeni bir proje oluşturun
-   - Flutter uygulamanızı Firebase'e ekleyin
-   - `google-services.json` dosyasını `android/app` dizinine ekleyin
-   - Firebase Authentication ve Cloud Firestore'u etkinleştirin
-
-5. Uygulamayı çalıştırın:
+   - Authentication'ı etkinleştirin (E-posta/Şifre)
+   - Firestore Database'i oluşturun
+   - Firebase CLI ile projeyi yapılandırın:
+     ```bash
+     firebase init
+     ```
+6. Uygulamayı çalıştırın:
    ```bash
    flutter run
    ```
 
-## Kullanılan Teknolojiler
+## Teknolojiler
 
-- Flutter
-- Firebase Authentication
-- Cloud Firestore
-- Provider (State Management)
-- Material Design 3
+- **Flutter** - UI framework
+- **Firebase**
+  - Authentication - Kullanıcı yönetimi
+  - Cloud Firestore - Veritabanı
+- **State Management**
+  - Provider - Durum yönetimi
+  - GetIt - Dependency injection
+- **UI/UX**
+  - Material Design 3
+  - Custom animations
+  - Responsive design
 
-## Katkıda Bulunma
+## Proje Yapısı
 
-1. Bu depoyu fork edin
-2. Yeni bir özellik dalı oluşturun (`git checkout -b feature/amazing-feature`)
-3. Değişikliklerinizi commit edin (`git commit -m 'Add some amazing feature'`)
-4. Dalınıza push yapın (`git push origin feature/amazing-feature`)
-5. Bir Pull Request oluşturun
+```
+lib/
+├── core/
+│   ├── error/         # Hata yönetimi
+│   ├── routes/        # Rota yönetimi
+│   ├── services/      # Servisler
+│   ├── theme/         # Tema yapılandırması
+│   ├── validation/    # Doğrulama servisleri
+│   └── widgets/       # Ortak widget'lar
+├── presentation/
+│   ├── screens/       # Ekranlar
+│   └── widgets/       # Ekran widget'ları
+└── main.dart          # Uygulama giriş noktası
+```
+
+## Katmanlı Mimari
+
+Uygulama, Clean Architecture prensiplerine uygun olarak aşağıdaki katmanlardan oluşmaktadır:
+
+1. **Core (Çekirdek katman)**
+   - Tema yönetimi
+   - Firebase yapılandırması
+   - Servisler
+   - Hata yönetimi
+   - Doğrulama servisleri
+
+2. **Presentation (Sunum katmanı)**
+   - Ekranlar
+   - Widget'lar
+   - State management
+   - Kullanıcı etkileşimleri
+
+## Güvenlik
+
+- Firebase Authentication ile güvenli kullanıcı yönetimi
+- Firestore güvenlik kuralları
+- Veri doğrulama ve sanitizasyon
+- Güvenli şifre yönetimi
 
 ## Lisans
 
-Bu proje MIT lisansı altında lisanslanmıştır. Daha fazla bilgi için `LICENSE` dosyasına bakın.
-
-## İletişim
-
-Proje Sahibi - [@Uricaryn](https://github.com/Uricaryn)
-
-Proje Linki: [https://github.com/Uricaryn/backgammon_score_tracker](https://github.com/Uricaryn/backgammon_score_tracker)
+Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için [LICENSE](LICENSE) dosyasına bakın.
