@@ -75,9 +75,9 @@ class _SplashScreenState extends State<SplashScreen>
                 scale: _scaleAnimation.value,
                 child: Opacity(
                   opacity: _opacityAnimation.value,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                       // Logo Container
                       Container(
                         width: 120,
@@ -112,15 +112,15 @@ class _SplashScreenState extends State<SplashScreen>
                           fontWeight: FontWeight.bold,
                           color: Theme.of(context).colorScheme.primary,
                           letterSpacing: 1.2,
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 8),
                       // Tagline
-                      Text(
+                        Text(
                         'Maçlarınızı takip edin, istatistiklerinizi görün',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white,
+                            color: Colors.white,
                           fontWeight: FontWeight.w500,
                         ),
                         textAlign: TextAlign.center,
@@ -134,10 +134,10 @@ class _SplashScreenState extends State<SplashScreen>
                           strokeWidth: 3,
                           valueColor: AlwaysStoppedAnimation<Color>(
                             Theme.of(context).colorScheme.primary,
+                              ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
                   ),
                 ),
               );

@@ -12,6 +12,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/rendering.dart';
 import 'package:backgammon_score_tracker/presentation/screens/profile_screen.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +25,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final screenshotController = ScreenshotController();
+
   Future<void> _deleteGame(String gameId) async {
     try {
       await FirebaseFirestore.instance.collection('games').doc(gameId).delete();
@@ -33,6 +39,32 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Hata: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareScoreboard() async {
+    try {
+      final image = await screenshotController.capture(
+        delay: const Duration(milliseconds: 10),
+        pixelRatio: 3.0,
+      );
+      if (image == null) return;
+
+      final tempDir = await getTemporaryDirectory();
+      final file = await File('${tempDir.path}/scoreboard.png').create();
+      await file.writeAsBytes(image);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Tavla Skor Tablosu',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Paylaşım sırasında hata oluştu: ${e.toString()}')),
         );
       }
     }
@@ -312,237 +344,270 @@ class _HomeScreenState extends State<HomeScreen> {
                                             .primary,
                                       ),
                                     ),
+                                    const Spacer(),
+                                    IconButton(
+                                      icon: const Icon(Icons.share),
+                                      onPressed: _shareScoreboard,
+                                      tooltip: 'Skor tablosunu paylaş',
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 20),
-                                SizedBox(
-                                  height:
-                                      MediaQuery.of(context).size.height * 0.3,
-                                  child: SingleChildScrollView(
-                                    child: StreamBuilder<QuerySnapshot>(
-                                      stream: FirebaseFirestore.instance
-                                          .collection('games')
-                                          .where('userId', isEqualTo: userId)
-                                          .snapshots(),
-                                      builder: (context, snapshot) {
-                                        if (snapshot.hasError) {
-                                          debugPrint(
-                                              'Skorboard Error: ${snapshot.error}'); // Debug print
-                                          return Text(
-                                              'Hata: ${snapshot.error}');
-                                        }
+                                Screenshot(
+                                  controller: screenshotController,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Theme.of(context).colorScheme.surface,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: SizedBox(
+                                      height:
+                                          MediaQuery.of(context).size.height *
+                                              0.3,
+                                      child: SingleChildScrollView(
+                                        child: StreamBuilder<QuerySnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('games')
+                                              .where('userId',
+                                                  isEqualTo: userId)
+                                              .snapshots(),
+                                          builder: (context, snapshot) {
+                                            if (snapshot.hasError) {
+                                              debugPrint(
+                                                  'Skorboard Error: ${snapshot.error}'); // Debug print
+                                              return Text(
+                                                  'Hata: ${snapshot.error}');
+                                            }
 
-                                        if (snapshot.connectionState ==
-                                            ConnectionState.waiting) {
-                                          return const Center(
-                                              child:
-                                                  CircularProgressIndicator());
-                                        }
+                                            if (snapshot.connectionState ==
+                                                ConnectionState.waiting) {
+                                              return const Center(
+                                                  child:
+                                                      CircularProgressIndicator());
+                                            }
 
-                                        if (!snapshot.hasData ||
-                                            snapshot.data!.docs.isEmpty) {
-                                          return const Text(
-                                              'Henüz maç kaydı bulunmuyor');
-                                        }
+                                            if (!snapshot.hasData ||
+                                                snapshot.data!.docs.isEmpty) {
+                                              return const Text(
+                                                  'Henüz maç kaydı bulunmuyor');
+                                            }
 
-                                        debugPrint(
-                                            'Skorboard Data: ${snapshot.data!.docs.length} matches'); // Debug print
+                                            debugPrint(
+                                                'Skorboard Data: ${snapshot.data!.docs.length} matches'); // Debug print
 
-                                        // Oyuncu kazanma sayılarını hesapla
-                                        Map<String, int> playerWins = {};
-                                        Map<String, int> playerGames = {};
-                                        for (var doc in snapshot.data!.docs) {
-                                          final data = doc.data()
-                                              as Map<String, dynamic>;
-                                          final player1 =
-                                              data['player1'] as String;
-                                          final player2 =
-                                              data['player2'] as String;
-                                          final player1Score =
-                                              data['player1Score'] as int;
-                                          final player2Score =
-                                              data['player2Score'] as int;
+                                            // Oyuncu kazanma sayılarını hesapla
+                                            Map<String, int> playerWins = {};
+                                            Map<String, int> playerGames = {};
+                                            for (var doc
+                                                in snapshot.data!.docs) {
+                                              final data = doc.data()
+                                                  as Map<String, dynamic>;
+                                              final player1 =
+                                                  data['player1'] as String;
+                                              final player2 =
+                                                  data['player2'] as String;
+                                              final player1Score =
+                                                  data['player1Score'] as int;
+                                              final player2Score =
+                                                  data['player2Score'] as int;
 
-                                          // Toplam oyun sayısını güncelle
-                                          playerGames[player1] =
-                                              (playerGames[player1] ?? 0) + 1;
-                                          playerGames[player2] =
-                                              (playerGames[player2] ?? 0) + 1;
+                                              // Toplam oyun sayısını güncelle
+                                              playerGames[player1] =
+                                                  (playerGames[player1] ?? 0) +
+                                                      1;
+                                              playerGames[player2] =
+                                                  (playerGames[player2] ?? 0) +
+                                                      1;
 
-                                          // Kazanma sayısını güncelle
-                                          if (player1Score > player2Score) {
-                                            playerWins[player1] =
-                                                (playerWins[player1] ?? 0) + 1;
-                                          } else {
-                                            playerWins[player2] =
-                                                (playerWins[player2] ?? 0) + 1;
-                                          }
-                                        }
+                                              // Kazanma sayısını güncelle
+                                              if (player1Score > player2Score) {
+                                                playerWins[player1] =
+                                                    (playerWins[player1] ?? 0) +
+                                                        1;
+                                              } else {
+                                                playerWins[player2] =
+                                                    (playerWins[player2] ?? 0) +
+                                                        1;
+                                              }
+                                            }
 
-                                        // Kazanma oranına göre sırala
-                                        var sortedPlayers = playerWins.entries
-                                            .toList()
-                                          ..sort((a, b) {
-                                            final aWinRate =
-                                                (playerWins[a.key] ?? 0) /
-                                                    (playerGames[a.key] ?? 1);
-                                            final bWinRate =
-                                                (playerWins[b.key] ?? 0) /
-                                                    (playerGames[b.key] ?? 1);
-                                            return bWinRate.compareTo(aWinRate);
-                                          });
+                                            // Kazanma oranına göre sırala
+                                            var sortedPlayers = playerWins
+                                                .entries
+                                                .toList()
+                                              ..sort((a, b) {
+                                                final aWinRate =
+                                                    (playerWins[a.key] ?? 0) /
+                                                        (playerGames[a.key] ??
+                                                            1);
+                                                final bWinRate =
+                                                    (playerWins[b.key] ?? 0) /
+                                                        (playerGames[b.key] ??
+                                                            1);
+                                                return bWinRate
+                                                    .compareTo(aWinRate);
+                                              });
 
-                                        // Sadece ilk 6 oyuncuyu al
-                                        final topPlayers =
-                                            sortedPlayers.take(6).toList();
+                                            // Sadece ilk 6 oyuncuyu al
+                                            final topPlayers =
+                                                sortedPlayers.take(6).toList();
 
-                                        return Column(
-                                          children: [
-                                            for (var i = 0;
-                                                i < topPlayers.length;
-                                                i++)
-                                              Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
+                                            return Column(
+                                              children: [
+                                                for (var i = 0;
+                                                    i < topPlayers.length;
+                                                    i++)
+                                                  Padding(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
                                                         vertical: 8.0),
-                                                child: InkWell(
-                                                  onTap: () {
-                                                    showDialog(
-                                                      context: context,
-                                                      builder: (context) =>
-                                                          PlayerStatsDialog(
-                                                        playerName:
-                                                            topPlayers[i].key,
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            12),
-                                                    decoration: BoxDecoration(
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .surface,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              12),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: Theme.of(
-                                                                  context)
-                                                              .colorScheme
-                                                              .shadow
-                                                              .withOpacity(0.1),
-                                                          blurRadius: 4,
-                                                          offset: const Offset(
-                                                              0, 2),
+                                                    child: InkWell(
+                                                      onTap: () {
+                                                        showDialog(
+                                                          context: context,
+                                                          builder: (context) =>
+                                                              PlayerStatsDialog(
+                                                            playerName:
+                                                                topPlayers[i]
+                                                                    .key,
+                                                          ),
+                                                        );
+                                                      },
+                                                      child: Container(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(12),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .surface,
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(12),
+                                                          boxShadow: [
+                                                            BoxShadow(
+                                                              color: Theme.of(
+                                                                      context)
+                                                                  .colorScheme
+                                                                  .shadow
+                                                                  .withOpacity(
+                                                                      0.1),
+                                                              blurRadius: 4,
+                                                              offset:
+                                                                  const Offset(
+                                                                      0, 2),
+                                                            ),
+                                                          ],
                                                         ),
-                                                      ],
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .spaceBetween,
-                                                      children: [
-                                                        Row(
+                                                        child: Row(
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .spaceBetween,
                                                           children: [
-                                                            if (i < 3) ...[
-                                                              Icon(
-                                                                i == 0
-                                                                    ? Icons
-                                                                        .emoji_events
-                                                                    : i == 1
+                                                            Row(
+                                                              children: [
+                                                                if (i < 3) ...[
+                                                                  Icon(
+                                                                    i == 0
                                                                         ? Icons
-                                                                            .workspace_premium
-                                                                        : Icons
-                                                                            .military_tech,
-                                                                color: i == 0
-                                                                    ? Colors
-                                                                        .amber
-                                                                    : i == 1
-                                                                        ? Colors.grey[
-                                                                            400]
-                                                                        : Colors
-                                                                            .brown[300],
-                                                                size: 28,
+                                                                            .emoji_events
+                                                                        : i == 1
+                                                                            ? Icons.workspace_premium
+                                                                            : Icons.military_tech,
+                                                                    color: i ==
+                                                                            0
+                                                                        ? Colors
+                                                                            .amber
+                                                                        : i == 1
+                                                                            ? Colors.grey[400]
+                                                                            : Colors.brown[300],
+                                                                    size: 28,
+                                                                  ),
+                                                                  const SizedBox(
+                                                                      width:
+                                                                          12),
+                                                                ],
+                                                                Text(
+                                                                  topPlayers[i]
+                                                                      .key,
+                                                                  style:
+                                                                      TextStyle(
+                                                                    fontSize:
+                                                                        16,
+                                                                    fontWeight: i <
+                                                                            3
+                                                                        ? FontWeight
+                                                                            .bold
+                                                                        : FontWeight
+                                                                            .normal,
+                                                                    color: i < 3
+                                                                        ? Theme.of(context)
+                                                                            .colorScheme
+                                                                            .primary
+                                                                        : Theme.of(context)
+                                                                            .colorScheme
+                                                                            .onSurface,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            Container(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                horizontal: 12,
+                                                                vertical: 6,
                                                               ),
-                                                              const SizedBox(
-                                                                  width: 12),
-                                                            ],
-                                                            Text(
-                                                              topPlayers[i].key,
-                                                              style: TextStyle(
-                                                                fontSize: 16,
-                                                                fontWeight: i <
-                                                                        3
-                                                                    ? FontWeight
-                                                                        .bold
-                                                                    : FontWeight
-                                                                        .normal,
+                                                              decoration:
+                                                                  BoxDecoration(
                                                                 color: i < 3
                                                                     ? Theme.of(
                                                                             context)
                                                                         .colorScheme
-                                                                        .primary
+                                                                        .primaryContainer
                                                                     : Theme.of(
                                                                             context)
                                                                         .colorScheme
-                                                                        .onSurface,
+                                                                        .surfaceVariant,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            20),
+                                                              ),
+                                                              child: Text(
+                                                                '%${((playerWins[topPlayers[i].key] ?? 0) / (playerGames[topPlayers[i].key] ?? 1) * 100).toStringAsFixed(1)}',
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize: 14,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: i < 3
+                                                                      ? Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onPrimaryContainer
+                                                                      : Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                ),
                                                               ),
                                                             ),
                                                           ],
                                                         ),
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .symmetric(
-                                                            horizontal: 12,
-                                                            vertical: 6,
-                                                          ),
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: i < 3
-                                                                ? Theme.of(
-                                                                        context)
-                                                                    .colorScheme
-                                                                    .primaryContainer
-                                                                : Theme.of(
-                                                                        context)
-                                                                    .colorScheme
-                                                                    .surfaceVariant,
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        20),
-                                                          ),
-                                                          child: Text(
-                                                            '%${((playerWins[topPlayers[i].key] ?? 0) / (playerGames[topPlayers[i].key] ?? 1) * 100).toStringAsFixed(1)}',
-                                                            style: TextStyle(
-                                                              fontSize: 14,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                              color: i < 3
-                                                                  ? Theme.of(
-                                                                          context)
-                                                                      .colorScheme
-                                                                      .onPrimaryContainer
-                                                                  : Theme.of(
-                                                                          context)
-                                                                      .colorScheme
-                                                                      .onSurfaceVariant,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ],
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              ),
-                                          ],
-                                        );
-                                      },
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),

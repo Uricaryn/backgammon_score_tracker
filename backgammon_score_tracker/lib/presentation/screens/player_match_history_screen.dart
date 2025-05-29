@@ -563,3 +563,4 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
     );
   }
 }
+ 
