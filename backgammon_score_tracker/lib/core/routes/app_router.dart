@@ -13,7 +13,9 @@ class AppRouter {
   static const String statistics = '/statistics';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
-    switch (settings.name) {
+    final name = settings.name ?? splash;
+
+    switch (name) {
       case splash:
         return MaterialPageRoute(builder: (_) => const SplashScreen());
       case login:
@@ -28,7 +30,7 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => Scaffold(
             body: Center(
-              child: Text('No route defined for ${settings.name}'),
+              child: Text('No route defined for $name'),
             ),
           ),
         );

@@ -7,6 +7,7 @@ import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart'
 import 'package:backgammon_score_tracker/presentation/screens/home_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/splash_screen.dart';
 import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
+import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,13 +55,13 @@ class MyApp extends StatelessWidget {
     final darkTheme = ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF8B4513), // Kahverengi
-        primary: const Color(0xFFDEB887), // Bej
-        secondary: const Color(0xFFD2691E), // Koyu Turuncu
-        tertiary: const Color(0xFFCD853F), // Açık Kahverengi
+        seedColor: const Color(0xFF8B4513),
+        primary: const Color(0xFF8B4513),
+        secondary: const Color(0xFFDEB887),
+        tertiary: const Color(0xFFD2691E),
         brightness: Brightness.dark,
       ),
-      cardColor: Colors.grey[900],
+      cardColor: const Color(0xFF1E1E1E),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -76,38 +77,30 @@ class MyApp extends StatelessWidget {
       ),
     );
 
-    return MaterialApp(
-      title: 'Tavla Skor Takip',
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      themeMode: themeProvider.getThemeMode(),
-      home: const SplashScreen(),
-    );
-  }
-}
-
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return MaterialApp(
+            title: 'Tavla Skor Takip',
+            theme: lightTheme,
+            darkTheme: darkTheme,
+            initialRoute: AppRouter.splash,
+            onGenerateRoute: AppRouter.onGenerateRoute,
+          );
         }
 
         if (snapshot.hasData) {
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')
-                .doc(snapshot.data?.uid)
+                .doc(snapshot.data!.uid)
                 .snapshots(),
             builder: (context, userSnapshot) {
               if (userSnapshot.hasData) {
                 final userData =
-                    userSnapshot.data?.data() as Map<String, dynamic>?;
+                    userSnapshot.data!.data() as Map<String, dynamic>?;
+                final useSystemTheme = userData?['useSystemTheme'] ?? true;
                 final themeMode = userData?['themeMode'] ?? 'system';
 
                 ThemeMode selectedThemeMode;
@@ -124,17 +117,19 @@ class AuthWrapper extends StatelessWidget {
 
                 return MaterialApp(
                   title: 'Tavla Skor Takip',
-                  theme: Theme.of(context),
-                  darkTheme: Theme.of(context),
+                  theme: lightTheme,
+                  darkTheme: darkTheme,
                   themeMode: selectedThemeMode,
-                  home: const HomeScreen(),
+                  initialRoute: AppRouter.home,
+                  onGenerateRoute: AppRouter.onGenerateRoute,
                 );
               }
               return MaterialApp(
                 title: 'Tavla Skor Takip',
-                theme: Theme.of(context),
-                darkTheme: Theme.of(context),
-                home: const HomeScreen(),
+                theme: lightTheme,
+                darkTheme: darkTheme,
+                initialRoute: AppRouter.home,
+                onGenerateRoute: AppRouter.onGenerateRoute,
               );
             },
           );
@@ -142,9 +137,10 @@ class AuthWrapper extends StatelessWidget {
 
         return MaterialApp(
           title: 'Tavla Skor Takip',
-          theme: Theme.of(context),
-          darkTheme: Theme.of(context),
-          home: const LoginScreen(),
+          theme: lightTheme,
+          darkTheme: darkTheme,
+          initialRoute: AppRouter.login,
+          onGenerateRoute: AppRouter.onGenerateRoute,
         );
       },
     );
