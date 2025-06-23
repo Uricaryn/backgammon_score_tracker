@@ -1,36 +1,33 @@
-import 'package:flutter/material.dart';
-
 class ValidationService {
-  static String? validateUsername(String? value) {
+  static String? validateName(
+    String? value, {
+    required String fieldName,
+    int minLength = 2,
+    int maxLength = 15,
+  }) {
     if (value == null || value.isEmpty) {
-      return 'Kullanıcı adı boş olamaz';
+      return '$fieldName boş olamaz';
     }
-    if (value.length < 3) {
-      return 'Kullanıcı adı en az 3 karakter olmalıdır';
+    if (value.length < minLength) {
+      return '$fieldName en az $minLength karakter olmalıdır';
     }
-    if (value.length > 20) {
-      return 'Kullanıcı adı en fazla 20 karakter olabilir';
+    if (value.length > maxLength) {
+      return '$fieldName en fazla $maxLength karakter olabilir';
     }
     if (!RegExp(r'^[a-zA-ZğüşıöçĞÜŞİÖÇ\s]+$').hasMatch(value)) {
-      return 'Kullanıcı adı sadece harflerden oluşmalıdır';
+      return '$fieldName sadece harflerden oluşmalıdır';
     }
     return null;
   }
 
+  static String? validateUsername(String? value) {
+    return validateName(value,
+        fieldName: 'Kullanıcı adı', minLength: 3, maxLength: 20);
+  }
+
   static String? validatePlayerName(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Oyuncu adı boş olamaz';
-    }
-    if (value.length < 2) {
-      return 'Oyuncu adı en az 2 karakter olmalıdır';
-    }
-    if (value.length > 15) {
-      return 'Oyuncu adı en fazla 15 karakter olabilir';
-    }
-    if (!RegExp(r'^[a-zA-ZğüşıöçĞÜŞİÖÇ\s]+$').hasMatch(value)) {
-      return 'Oyuncu adı sadece harflerden oluşmalıdır';
-    }
-    return null;
+    return validateName(value,
+        fieldName: 'Oyuncu adı', minLength: 2, maxLength: 15);
   }
 
   static String? validateEmail(String? value) {

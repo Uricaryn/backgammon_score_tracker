@@ -316,14 +316,6 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                   final totalMatches = stats['totalMatches'] as int? ?? 0;
                   final player1Wins = stats['player1Wins'] as int? ?? 0;
                   final player2Wins = stats['player2Wins'] as int? ?? 0;
-                  final totalPlayer1Score =
-                      stats['totalPlayer1Score'] as int? ?? 0;
-                  final totalPlayer2Score =
-                      stats['totalPlayer2Score'] as int? ?? 0;
-                  final highestPlayer1Score =
-                      stats['highestPlayer1Score'] as int? ?? 0;
-                  final highestPlayer2Score =
-                      stats['highestPlayer2Score'] as int? ?? 0;
                   final matchHistory =
                       stats['matchHistory'] as List<Map<String, dynamic>>? ??
                           [];
@@ -563,4 +555,3 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
     );
   }
 }
- 

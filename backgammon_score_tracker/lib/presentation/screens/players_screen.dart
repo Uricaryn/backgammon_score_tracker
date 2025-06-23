@@ -7,6 +7,7 @@ import 'package:backgammon_score_tracker/presentation/screens/player_match_histo
 import 'dart:ui';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 
 class PlayersScreen extends StatefulWidget {
   const PlayersScreen({super.key});
@@ -28,19 +29,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
     });
 
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(ErrorService.authUserNotFound)),
-        );
-        return;
-      }
-
-      await FirebaseFirestore.instance.collection('players').add({
-        'name': _playerNameController.text,
-        'userId': userId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await FirebaseService().savePlayer(_playerNameController.text);
 
       if (mounted) {
         _playerNameController.clear();
@@ -48,33 +37,10 @@ class _PlayersScreenState extends State<PlayersScreen> {
           const SnackBar(content: Text(ErrorService.successPlayerSaved)),
         );
       }
-    } on FirebaseException catch (e) {
-      String errorMessage;
-      switch (e.code) {
-        case 'permission-denied':
-          errorMessage = ErrorService.firestorePermissionDenied;
-          break;
-        case 'already-exists':
-          errorMessage = ErrorService.playerNameExists;
-          break;
-        case 'resource-exhausted':
-          errorMessage = ErrorService.firestoreResourceExhausted;
-          break;
-        case 'unavailable':
-          errorMessage = ErrorService.firestoreUnavailable;
-          break;
-        default:
-          errorMessage = ErrorService.playerSaveFailed;
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(ErrorService.generalError)),
+          SnackBar(content: Text(e.toString())),
         );
       }
     } finally {

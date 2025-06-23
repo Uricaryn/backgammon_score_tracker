@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_icon.dart';
-import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
-import 'package:backgammon_score_tracker/presentation/screens/home_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -40,20 +38,12 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    _controller.forward();
-
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        if (FirebaseAuth.instance.currentUser != null) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
+    _controller.forward().then((_) {
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, AppRouter.login);
         }
-      }
+      });
     });
   }
 
@@ -75,10 +65,9 @@ class _SplashScreenState extends State<SplashScreen>
                 scale: _scaleAnimation.value,
                 child: Opacity(
                   opacity: _opacityAnimation.value,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                      // Logo Container
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
                       Container(
                         width: 120,
                         height: 120,
@@ -90,7 +79,7 @@ class _SplashScreenState extends State<SplashScreen>
                               color: Theme.of(context)
                                   .colorScheme
                                   .shadow
-                                  .withOpacity(0.2),
+                                  .withValues(alpha: 0.2),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -104,40 +93,17 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ),
                       const SizedBox(height: 24),
-                      // App Name
                       Text(
                         'Tavla Skor Takip',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                          letterSpacing: 1.2,
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      // Tagline
-                        Text(
-                        'Maçlarınızı takip edin, istatistiklerinizi görün',
-                        style: TextStyle(
-                          fontSize: 14,
-                            color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        textAlign: TextAlign.center,
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
-                      const SizedBox(height: 40),
-                      // Loading Indicator
-                      SizedBox(
-                        width: 40,
-                        height: 40,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Theme.of(context).colorScheme.primary,
-                              ),
-                          ),
-                        ),
-                      ],
+                    ],
                   ),
                 ),
               );

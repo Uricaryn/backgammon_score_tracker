@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:backgammon_score_tracker/presentation/screens/splash_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/home_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/new_game_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/statistics_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/splash_screen.dart';
 
 class AppRouter {
   static const String splash = '/';

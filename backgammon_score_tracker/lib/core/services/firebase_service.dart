@@ -10,10 +10,22 @@ class FirebaseService {
   // Kullanıcı işlemleri
   Future<UserCredential> signIn(String email, String password) async {
     try {
-      return await _auth.signInWithEmailAndPassword(
+      final userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      if (userCredential.user != null) {
+        try {
+          // Ensure user document exists
+          await createUserDocument(userCredential.user!);
+        } catch (e) {
+          debugPrint('Error creating user document: $e');
+          // Continue even if document creation fails
+        }
+      }
+
+      return userCredential;
     } on FirebaseAuthException catch (e) {
       String errorMessage;
       switch (e.code) {
@@ -35,47 +47,62 @@ class FirebaseService {
         case 'network-request-failed':
           errorMessage = ErrorService.authNetworkRequestFailed;
           break;
+        case 'operation-not-allowed':
+          errorMessage = ErrorService.authOperationNotAllowed;
+          break;
         default:
           errorMessage = ErrorService.authFailed;
       }
       throw Exception(errorMessage);
     } catch (e) {
+      debugPrint('Sign in error: $e');
       throw Exception(ErrorService.generalError);
+    }
+  }
+
+  Future<void> createUserDocument(User user) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) {
+        await _firestore.collection('users').doc(user.uid).set({
+          'email': user.email,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastLogin': FieldValue.serverTimestamp(),
+          'isEmailVerified': user.emailVerified,
+          'themeMode': 'system',
+        });
+        debugPrint('User document created for ${user.uid}');
+      }
+    } catch (e) {
+      debugPrint('Error creating user document: $e');
+      throw Exception(ErrorService.firestorePermissionDenied);
     }
   }
 
   Future<UserCredential> signUp(String email, String password) async {
     try {
-      debugPrint('Kullanıcı oluşturuluyor...');
-      // Kullanıcı oluştur
+      debugPrint('Creating user...');
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      debugPrint('Kullanıcı oluşturuldu: ${userCredential.user?.uid}');
+      debugPrint('User created: ${userCredential.user?.uid}');
 
       if (userCredential.user == null) {
         throw Exception(ErrorService.authFailed);
       }
 
-      debugPrint('E-posta doğrulama maili gönderiliyor...');
-      // E-posta doğrulama maili gönder
+      debugPrint('Sending email verification...');
       await userCredential.user!.sendEmailVerification();
-      debugPrint('E-posta doğrulama maili gönderildi');
+      debugPrint('Email verification sent');
 
-      debugPrint('Firestore\'a kullanıcı bilgileri kaydediliyor...');
-      // Kullanıcı bilgilerini Firestore'a kaydet
-      await _firestore.collection('users').doc(userCredential.user!.uid).set({
-        'email': email,
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLogin': FieldValue.serverTimestamp(),
-        'isEmailVerified': false,
-      });
-      debugPrint('Firestore\'a kullanıcı bilgileri kaydedildi');
+      debugPrint('Creating user document...');
+      await createUserDocument(userCredential.user!);
+      debugPrint('User document created');
 
       return userCredential;
     } on FirebaseAuthException catch (e) {
-      debugPrint('Firebase Auth Hatası: ${e.code} - ${e.message}');
+      debugPrint('Firebase Auth Error: ${e.code} - ${e.message}');
       String errorMessage;
       switch (e.code) {
         case 'email-already-in-use':
@@ -94,22 +121,8 @@ class FirebaseService {
           errorMessage = ErrorService.authFailed;
       }
       throw Exception(errorMessage);
-    } on FirebaseException catch (e) {
-      debugPrint('Firebase Hatası: ${e.code} - ${e.message}');
-      String errorMessage;
-      switch (e.code) {
-        case 'permission-denied':
-          errorMessage = ErrorService.firestorePermissionDenied;
-          break;
-        case 'unavailable':
-          errorMessage = ErrorService.firestoreUnavailable;
-          break;
-        default:
-          errorMessage = ErrorService.generalError;
-      }
-      throw Exception(errorMessage);
     } catch (e) {
-      debugPrint('Genel Hata: $e');
+      debugPrint('General Error: $e');
       throw Exception(ErrorService.generalError);
     }
   }
@@ -123,6 +136,58 @@ class FirebaseService {
   }
 
   // Oyun işlemleri
+  Future<void> _ensureUserDocument(String userId, String email) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        await _firestore.collection('users').doc(userId).set({
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastLogin': FieldValue.serverTimestamp(),
+          'isEmailVerified': false,
+          'themeMode': 'system',
+        });
+      }
+    } catch (e) {
+      debugPrint('Error ensuring user document: $e');
+      throw Exception(ErrorService.firestorePermissionDenied);
+    }
+  }
+
+  Future<void> savePlayer(String name) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception(ErrorService.authUserNotFound);
+      }
+
+      // Ensure user document exists
+      await _ensureUserDocument(user.uid, user.email ?? '');
+
+      // Create player document
+      await _firestore.collection('players').add({
+        'name': name,
+        'userId': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } on FirebaseException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'permission-denied':
+          errorMessage = ErrorService.firestorePermissionDenied;
+          break;
+        case 'unavailable':
+          errorMessage = ErrorService.firestoreUnavailable;
+          break;
+        default:
+          errorMessage = ErrorService.generalError;
+      }
+      throw Exception(errorMessage);
+    } catch (e) {
+      throw Exception(ErrorService.generalError);
+    }
+  }
+
   Future<void> saveGame({
     required String player1,
     required String player2,
@@ -130,10 +195,13 @@ class FirebaseService {
     required int player2Score,
   }) async {
     try {
-      final userId = _auth.currentUser?.uid;
-      if (userId == null) {
+      final user = _auth.currentUser;
+      if (user == null) {
         throw Exception(ErrorService.authUserNotFound);
       }
+
+      // Ensure user document exists
+      await _ensureUserDocument(user.uid, user.email ?? '');
 
       await _firestore.collection('games').add({
         'player1': player1,
@@ -141,7 +209,7 @@ class FirebaseService {
         'player1Score': player1Score,
         'player2Score': player2Score,
         'timestamp': FieldValue.serverTimestamp(),
-        'userId': userId,
+        'userId': user.uid,
       });
     } on FirebaseException catch (e) {
       String errorMessage;

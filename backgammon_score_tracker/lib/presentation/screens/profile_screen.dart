@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:provider/provider.dart';
-import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui';
 
 class ProfileScreen extends StatefulWidget {
@@ -19,7 +18,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   bool _isLoading = false;
-  String _username = '';
 
   @override
   void initState() {

@@ -27,7 +27,10 @@ service cloud.firestore {
 
     // Users collection rules
     match /users/{userId} {
-      allow read, write: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && isOwner(userId);
+      allow delete: if false; // Prevent user document deletion
     }
   }
 } 

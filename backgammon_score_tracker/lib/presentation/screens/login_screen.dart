@@ -125,6 +125,9 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
         setState(() => _isSignUp = false);
+        _emailController.clear();
+        _passwordController.clear();
+        _confirmPasswordController.clear();
       }
     } catch (e) {
       if (mounted) {
