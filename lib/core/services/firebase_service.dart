@@ -2,14 +2,23 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/services/notification_service.dart';
+import 'package:backgammon_score_tracker/core/services/firebase_messaging_service.dart';
+import 'package:backgammon_score_tracker/core/services/log_service.dart';
+import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final NotificationService _notificationService = NotificationService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
+  final LogService _logService = LogService();
 
   // Kullanıcı işlemleri
   Future<UserCredential> signIn(String email, String password) async {
     try {
+      _logService.info('Kullanıcı girişi başlatıldı: $email', tag: 'Auth');
+
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -19,8 +28,12 @@ class FirebaseService {
         try {
           // Ensure user document exists
           await createUserDocument(userCredential.user!);
+          _logService.info(
+              'Kullanıcı girişi başarılı: ${userCredential.user!.uid}',
+              tag: 'Auth');
         } catch (e) {
-          debugPrint('Error creating user document: $e');
+          _logService.warning('Kullanıcı dokümanı oluşturulamadı: $e',
+              tag: 'Auth');
           // Continue even if document creation fails
         }
       }
@@ -53,9 +66,11 @@ class FirebaseService {
         default:
           errorMessage = ErrorService.authFailed;
       }
+      _logService.error('Kullanıcı girişi başarısız: ${e.code}',
+          tag: 'Auth', error: e);
       throw Exception(errorMessage);
     } catch (e) {
-      debugPrint('Sign in error: $e');
+      _logService.error('Beklenmeyen giriş hatası', tag: 'Auth', error: e);
       throw Exception(ErrorService.generalError);
     }
   }
@@ -70,39 +85,49 @@ class FirebaseService {
           'lastLogin': FieldValue.serverTimestamp(),
           'isEmailVerified': user.emailVerified,
           'themeMode': 'system',
+          // Bildirim tercihleri - sadece sosyal bildirimler aktif
+          'notificationEnabled': true,
+          'newGameNotifications': false,
+          'statisticsNotifications': false,
+          'reminderNotifications': false,
+          'socialNotifications': true,
         });
-        debugPrint('User document created for ${user.uid}');
+
+        // Bildirim servislerini başlat
+        await _initializeNotificationServices();
       }
     } catch (e) {
-      debugPrint('Error creating user document: $e');
       throw Exception(ErrorService.firestorePermissionDenied);
+    }
+  }
+
+  Future<void> _initializeNotificationServices() async {
+    try {
+      await _notificationService.initialize();
+      await _messagingService.initialize();
+      await _notificationService.createNotificationChannels();
+    } catch (e) {
+      // Bildirim servisleri başarısız olsa bile uygulama çalışmaya devam etsin
     }
   }
 
   Future<UserCredential> signUp(String email, String password) async {
     try {
-      debugPrint('Creating user...');
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      debugPrint('User created: ${userCredential.user?.uid}');
 
       if (userCredential.user == null) {
         throw Exception(ErrorService.authFailed);
       }
 
-      debugPrint('Sending email verification...');
       await userCredential.user!.sendEmailVerification();
-      debugPrint('Email verification sent');
 
-      debugPrint('Creating user document...');
       await createUserDocument(userCredential.user!);
-      debugPrint('User document created');
 
       return userCredential;
     } on FirebaseAuthException catch (e) {
-      debugPrint('Firebase Auth Error: ${e.code} - ${e.message}');
       String errorMessage;
       switch (e.code) {
         case 'email-already-in-use':
@@ -122,7 +147,6 @@ class FirebaseService {
       }
       throw Exception(errorMessage);
     } catch (e) {
-      debugPrint('General Error: $e');
       throw Exception(ErrorService.generalError);
     }
   }
@@ -146,10 +170,15 @@ class FirebaseService {
           'lastLogin': FieldValue.serverTimestamp(),
           'isEmailVerified': false,
           'themeMode': 'system',
+          // Bildirim tercihleri - sadece sosyal bildirimler aktif
+          'notificationEnabled': true,
+          'newGameNotifications': false,
+          'statisticsNotifications': false,
+          'reminderNotifications': false,
+          'socialNotifications': true,
         });
       }
     } catch (e) {
-      debugPrint('Error ensuring user document: $e');
       throw Exception(ErrorService.firestorePermissionDenied);
     }
   }
@@ -197,8 +226,14 @@ class FirebaseService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
+        _logService.error('Oyun kaydedilemedi: Kullanıcı oturumu yok',
+            tag: 'Game');
         throw Exception(ErrorService.authUserNotFound);
       }
+
+      _logService.info(
+          'Oyun kaydediliyor: $player1 vs $player2 ($player1Score-$player2Score)',
+          tag: 'Game');
 
       // Ensure user document exists
       await _ensureUserDocument(user.uid, user.email ?? '');
@@ -211,6 +246,8 @@ class FirebaseService {
         'timestamp': FieldValue.serverTimestamp(),
         'userId': user.uid,
       });
+
+      _logService.info('Oyun başarıyla kaydedildi', tag: 'Game');
     } on FirebaseException catch (e) {
       String errorMessage;
       switch (e.code) {
@@ -223,8 +260,12 @@ class FirebaseService {
         default:
           errorMessage = ErrorService.gameSaveFailed;
       }
+      _logService.error('Oyun kaydetme hatası: ${e.code}',
+          tag: 'Game', error: e);
       throw Exception(errorMessage);
     } catch (e) {
+      _logService.error('Beklenmeyen oyun kaydetme hatası',
+          tag: 'Game', error: e);
       throw Exception(ErrorService.generalError);
     }
   }
@@ -296,5 +337,100 @@ class FirebaseService {
     } catch (e) {
       throw Exception('İstatistikler getirilirken bir hata oluştu: $e');
     }
+  }
+
+  // Bildirim işlemleri
+  Future<List<NotificationModel>> getNotifications() async {
+    return await _messagingService.getNotifications();
+  }
+
+  Future<void> markNotificationAsRead(String notificationId) async {
+    await _messagingService.markNotificationAsRead(notificationId);
+  }
+
+  Future<void> deleteNotification(String notificationId) async {
+    await _messagingService.deleteNotification(notificationId);
+  }
+
+  Future<NotificationPreferences> getNotificationPreferences() async {
+    return await _messagingService.getNotificationPreferences();
+  }
+
+  Future<void> updateNotificationPreferences(
+      NotificationPreferences preferences) async {
+    await _messagingService.updateNotificationPreferences(preferences);
+  }
+
+  // Sadece sosyal bildirimler
+  Future<void> sendSocialNotification() async {
+    try {
+      final preferences = await _messagingService.getNotificationPreferences();
+      if (!preferences.enabled || !preferences.socialNotifications) {
+        return;
+      }
+
+      // Sosyal bildirimler - uygulama ile ilgili hatırlatıcı ve bilgilendirici
+      final socialMessages = [
+        {
+          'title': 'Tavla Zamanı! 🎲',
+          'body': 'Arkadaşlarınızla yeni bir maç yapmaya ne dersiniz?',
+        },
+        {
+          'title': 'İstatistiklerinizi Görün 📊',
+          'body':
+              'Bu haftaki performansınızı kontrol etmek için istatistiklerinize göz atın.',
+        },
+        {
+          'title': 'Yeni Oyuncu Ekleyin 👥',
+          'body':
+              'Daha fazla arkadaşınızı ekleyerek daha eğlenceli maçlar yapabilirsiniz.',
+        },
+        {
+          'title': 'Uzun Zamandır Oynamıyorsunuz ⏰',
+          'body':
+              'Son maçınızdan bu yana uzun zaman geçti. Yeni bir maç yapmaya ne dersiniz?',
+        },
+        {
+          'title': 'Başarılarınızı Paylaşın 🏆',
+          'body':
+              'Yeni rekorlarınızı ve başarılarınızı arkadaşlarınızla paylaşın.',
+        },
+      ];
+
+      // Rastgele bir sosyal mesaj seç
+      final randomMessage =
+          socialMessages[DateTime.now().millisecond % socialMessages.length];
+
+      await _notificationService.showNotification(
+        title: randomMessage['title']!,
+        body: randomMessage['body']!,
+        type: NotificationType.social,
+      );
+
+      // Firestore'a bildirim kaydet
+      await _firestore.collection('notifications').add({
+        'userId': _auth.currentUser?.uid,
+        'title': randomMessage['title']!,
+        'body': randomMessage['body']!,
+        'type': NotificationType.social.toString().split('.').last,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'data': {
+          'messageType': 'social',
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      });
+
+      _logService.info('Sosyal bildirim gönderildi: ${randomMessage['title']}',
+          tag: 'Notification');
+    } catch (e) {
+      _logService.error('Sosyal bildirim gönderilemedi',
+          tag: 'Notification', error: e);
+    }
+  }
+
+  // Sosyal bildirimleri manuel olarak tetikle
+  Future<void> triggerSocialNotification() async {
+    await sendSocialNotification();
   }
 }

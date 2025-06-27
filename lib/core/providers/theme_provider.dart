@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class ThemeProvider extends ChangeNotifier {
+class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String _themeModeKey = 'theme_mode';
   static const String _useSystemThemeKey = 'use_system_theme';
 
@@ -14,6 +14,21 @@ class ThemeProvider extends ChangeNotifier {
 
   ThemeProvider() {
     _loadThemeMode();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    if (_useSystemTheme) {
+      notifyListeners();
+    }
+    super.didChangePlatformBrightness();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _loadThemeMode() async {
@@ -49,4 +64,3 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 }
- 

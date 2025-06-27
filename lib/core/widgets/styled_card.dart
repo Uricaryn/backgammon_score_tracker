@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:backgammon_score_tracker/core/theme/app_theme.dart';
 
 class StyledCard extends StatelessWidget {
   final Widget child;
@@ -17,6 +18,8 @@ class StyledCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -28,27 +31,38 @@ class StyledCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withValues(alpha: 0.7),
-              Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withValues(alpha: 0.5),
-            ],
+            colors: AppTheme.getCardGradientColors(context),
           ),
           border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-            width: 1,
+            color: isDark
+                ? Theme.of(context).colorScheme.outline.withOpacity(0.3)
+                : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            width: isDark ? 1.5 : 1.0,
           ),
+          boxShadow: isDark
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius),
           child: useBackdropFilter
               ? BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  filter: ImageFilter.blur(
+                    sigmaX: isDark ? 15 : 10,
+                    sigmaY: isDark ? 15 : 10,
+                  ),
                   child: Padding(
                     padding: padding ?? const EdgeInsets.all(20.0),
                     child: child,

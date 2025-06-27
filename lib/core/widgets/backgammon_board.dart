@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:backgammon_score_tracker/core/theme/app_theme.dart';
 
 class BackgammonBoard extends StatelessWidget {
   final double opacity;
@@ -11,7 +12,10 @@ class BackgammonBoard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: BackgammonBoardPainter(opacity: opacity),
+      painter: BackgammonBoardPainter(
+        opacity: opacity,
+        context: context,
+      ),
       child: Container(),
     );
   }
@@ -19,19 +23,30 @@ class BackgammonBoard extends StatelessWidget {
 
 class BackgammonBoardPainter extends CustomPainter {
   final double opacity;
+  final BuildContext context;
 
-  BackgammonBoardPainter({this.opacity = 1.0});
+  BackgammonBoardPainter({
+    this.opacity = 1.0,
+    required this.context,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Theme-aware colors
+    final boardLightColor = AppTheme.getBoardLightColor(context);
+    final boardDarkColor = AppTheme.getBoardDarkColor(context);
+    final boardBorderColor = AppTheme.getBoardBorderColor(context);
+
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..color = Colors.white.withOpacity(opacity);
+      ..color = boardLightColor.withOpacity(opacity);
 
     final borderPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..color = Colors.brown.withOpacity(opacity)
-      ..strokeWidth = 2.0;
+      ..color = boardBorderColor.withOpacity(opacity)
+      ..strokeWidth = isDark ? 1.5 : 2.0; // Dark mode'da daha ince border
 
     // Draw the main board
     final boardRect = Rect.fromLTWH(0, 0, size.width, size.height);
@@ -59,12 +74,13 @@ class BackgammonBoardPainter extends CustomPainter {
         ..lineTo(x + triangleWidth / 2, triangleHeight)
         ..close();
 
-      // Alternate colors
+      // Alternate colors with theme awareness
       final isEven = i % 2 == 0;
       final trianglePaint = Paint()
         ..style = PaintingStyle.fill
-        ..color = (isEven ? Colors.brown : Colors.brown.shade200)
-            .withOpacity(opacity);
+        ..color = (isEven ? boardDarkColor : boardLightColor).withOpacity(isDark
+            ? opacity * 0.7
+            : opacity); // Dark mode'da daha düşük opacity
 
       canvas.drawPath(topPath, trianglePaint);
       canvas.drawPath(bottomPath, trianglePaint);
@@ -72,15 +88,15 @@ class BackgammonBoardPainter extends CustomPainter {
       canvas.drawPath(bottomPath, borderPaint);
     }
 
-    // Draw the bar
+    // Draw the bar with theme-aware color
     final barPaint = Paint()
       ..style = PaintingStyle.fill
-      ..color = Colors.brown.shade300.withOpacity(opacity);
+      ..color = boardBorderColor.withOpacity(isDark ? opacity * 0.8 : opacity);
 
     final barRect = Rect.fromLTWH(
-      size.width / 2 - 2,
+      size.width / 2 - (isDark ? 1.5 : 2), // Dark mode'da daha ince bar
       0,
-      4,
+      isDark ? 3 : 4,
       size.height,
     );
     canvas.drawRect(barRect, barPaint);

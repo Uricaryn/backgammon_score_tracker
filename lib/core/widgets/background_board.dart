@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/backgammon_board.dart';
+import 'package:backgammon_score_tracker/core/theme/app_theme.dart';
 
 class BackgroundBoard extends StatelessWidget {
   final Widget child;
@@ -18,22 +19,14 @@ class BackgroundBoard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: isDark
-              ? [
-                  Theme.of(context).colorScheme.surface,
-                  Theme.of(context).colorScheme.surface.withOpacity(0.95),
-                ]
-              : [
-                  Theme.of(context).colorScheme.surface,
-                  Theme.of(context).colorScheme.surface.withOpacity(0.8),
-                ],
+          colors: AppTheme.getBackgroundGradientColors(context),
         ),
       ),
       child: Stack(
         children: [
-          const Positioned.fill(
+          Positioned.fill(
             child: BackgammonBoard(
-              opacity: 0.3,
+              opacity: isDark ? 0.15 : 0.3,
             ),
           ),
           Positioned.fill(
@@ -42,10 +35,15 @@ class BackgroundBoard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.2),
-                    Colors.black.withOpacity(0.4),
-                  ],
+                  colors: isDark
+                      ? [
+                          Colors.black.withOpacity(0.3),
+                          Colors.black.withOpacity(0.5),
+                        ]
+                      : [
+                          Colors.black.withOpacity(0.1),
+                          Colors.black.withOpacity(0.3),
+                        ],
                 ),
               ),
             ),

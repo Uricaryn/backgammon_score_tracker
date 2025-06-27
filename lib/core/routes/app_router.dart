@@ -4,6 +4,7 @@ import 'package:backgammon_score_tracker/presentation/screens/home_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/new_game_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/statistics_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/splash_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/notifications_screen.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -11,6 +12,7 @@ class AppRouter {
   static const String home = '/home';
   static const String newGame = '/new-game';
   static const String statistics = '/statistics';
+  static const String notifications = '/notifications';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     final name = settings.name ?? splash;
@@ -26,6 +28,8 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const NewGameScreen());
       case statistics:
         return MaterialPageRoute(builder: (_) => const StatisticsScreen());
+      case notifications:
+        return MaterialPageRoute(builder: (_) => const NotificationsScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(

@@ -78,4 +78,30 @@ class ErrorService {
   static const String successPlayerDeleted = 'Oyuncu başarıyla silindi';
   static const String successProfileSaved = 'Profil başarıyla kaydedildi';
   static const String successProfileUpdated = 'Profil başarıyla güncellendi';
+
+  // Notification Errors
+  static const String notificationPermissionDenied = 'Bildirim izni reddedildi';
+  static const String notificationPermissionPermanentlyDenied =
+      'Bildirim izni kalıcı olarak reddedildi';
+  static const String notificationServiceUnavailable =
+      'Bildirim servisi kullanılamıyor';
+  static const String notificationTokenFailed = 'Bildirim token\'ı alınamadı';
+  static const String notificationSendFailed = 'Bildirim gönderilemedi';
+  static const String notificationSaveFailed = 'Bildirim kaydedilemedi';
+  static const String notificationLoadFailed = 'Bildirimler yüklenemedi';
+  static const String notificationDeleteFailed = 'Bildirim silinemedi';
+  static const String notificationPreferencesSaveFailed =
+      'Bildirim tercihleri kaydedilemedi';
+  static const String notificationPreferencesLoadFailed =
+      'Bildirim tercihleri yüklenemedi';
+
+  // Notification Success Messages
+  static const String successNotificationSent = 'Bildirim başarıyla gönderildi';
+  static const String successNotificationSaved =
+      'Bildirim başarıyla kaydedildi';
+  static const String successNotificationDeleted = 'Bildirim başarıyla silindi';
+  static const String successNotificationPreferencesSaved =
+      'Bildirim tercihleri kaydedildi';
+  static const String successNotificationPermissionGranted =
+      'Bildirim izni verildi';
 }

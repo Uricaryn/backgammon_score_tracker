@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_icon.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
+import 'package:backgammon_score_tracker/core/services/session_service.dart';
+import 'package:backgammon_score_tracker/core/services/notification_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,6 +18,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  final SessionService _sessionService = SessionService();
 
   @override
   void initState() {
@@ -39,12 +43,29 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _controller.forward().then((_) {
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, AppRouter.login);
-        }
-      });
+      _checkAuthState();
     });
+  }
+
+  Future<void> _checkAuthState() async {
+    try {
+      // Auth state'in ilk değerini bekle
+      final user = await FirebaseAuth.instance.authStateChanges().first;
+      if (user != null) {
+        final isSessionActive = await _sessionService.isSessionActive();
+        if (isSessionActive) {
+          await _sessionService.refreshSession();
+          if (mounted) Navigator.pushReplacementNamed(context, AppRouter.home);
+        } else {
+          await _sessionService.logout();
+          if (mounted) Navigator.pushReplacementNamed(context, AppRouter.login);
+        }
+      } else {
+        if (mounted) Navigator.pushReplacementNamed(context, AppRouter.login);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pushReplacementNamed(context, AppRouter.login);
+    }
   }
 
   @override

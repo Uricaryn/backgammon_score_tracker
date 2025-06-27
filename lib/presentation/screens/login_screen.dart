@@ -3,6 +3,7 @@ import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_icon.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
@@ -22,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _firebaseService = FirebaseService();
+  final _sessionService = SessionService();
   bool _isLoading = false;
   bool _isSignUp = false;
   late AnimationController _controller;
@@ -77,6 +79,10 @@ class _LoginScreenState extends State<LoginScreen>
         _emailController.text.trim(),
         _passwordController.text,
       );
+
+      // Session'ı başlat
+      await _sessionService.startSession();
+
       if (mounted) {
         Navigator.pushReplacementNamed(context, AppRouter.home);
       }
@@ -116,6 +122,10 @@ class _LoginScreenState extends State<LoginScreen>
         _emailController.text.trim(),
         _passwordController.text,
       );
+
+      // Session'ı başlat
+      await _sessionService.startSession();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

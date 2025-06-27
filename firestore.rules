@@ -32,5 +32,21 @@ service cloud.firestore {
       allow update: if isAuthenticated() && isOwner(userId);
       allow delete: if false; // Prevent user document deletion
     }
+
+    // Notifications collection rules
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isOwner(resource.data.userId);
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+
+    // Notification requests collection rules (for future push notifications)
+    match /notification_requests/{requestId} {
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isOwner(resource.data.userId);
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
   }
 } 

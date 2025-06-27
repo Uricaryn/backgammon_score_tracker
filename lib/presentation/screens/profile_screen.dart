@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/routes/app_router.dart';
+import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui';
+import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
+import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/core/services/log_service.dart';
+import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
+import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,12 +24,20 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
+  final _sessionService = SessionService();
+  final _firebaseService = FirebaseService();
+  final _logService = LogService();
   bool _isLoading = false;
+  int _remainingSessionTime = 0;
+  String _logFileSize = '0 KB';
+  String _logs = '';
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadSessionInfo();
+    _loadLogInfo();
   }
 
   @override
@@ -61,6 +76,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _loadSessionInfo() async {
+    final remainingTime = await _sessionService.getRemainingSessionTime();
+    if (mounted) {
+      setState(() {
+        _remainingSessionTime = remainingTime;
+      });
+    }
+  }
+
+  Future<void> _loadLogInfo() async {
+    try {
+      final size = await _logService.getLogFileSize();
+      setState(() {
+        _logFileSize = size;
+      });
+    } catch (e) {
+      // Log bilgisi yüklenemezse devam et
+    }
+  }
+
   Future<void> _saveUserData() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -85,6 +120,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'themeMode': themeProvider.themeMode,
       });
 
+      // Session aktivitesini kaydet
+      await _sessionService.recordActivity();
+      await _loadSessionInfo();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(ErrorService.successProfileUpdated)),
@@ -102,6 +141,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Çıkış Yap'),
+        content: const Text('Çıkış yapmak istediğinizden emin misiniz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Çıkış Yap'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _sessionService.logout();
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRouter.login,
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Çıkış yapılırken hata oluştu: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _refreshSession() async {
+    await _sessionService.refreshSession();
+    await _loadSessionInfo();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session yenilendi')),
+      );
+    }
+  }
+
+  String _formatTime(int minutes) {
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+
+    if (hours > 0) {
+      return '$hours saat ${remainingMinutes > 0 ? '$remainingMinutes dakika' : ''}';
+    } else {
+      return '$remainingMinutes dakika';
     }
   }
 
@@ -446,10 +545,242 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              // Log Yönetimi Kartı
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Theme.of(context)
+                            .colorScheme
+                            .surfaceVariant
+                            .withOpacity(0.7),
+                        Theme.of(context)
+                            .colorScheme
+                            .surfaceVariant
+                            .withOpacity(0.5),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.bug_report,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Log Yönetimi',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            // Log dosya boyutu
+                            ListTile(
+                              leading: const Icon(Icons.storage),
+                              title: const Text('Log Dosya Boyutu'),
+                              subtitle: Text(_logFileSize),
+                            ),
+                            const SizedBox(height: 16),
+                            // Log işlemleri
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isLoading ? null : _viewLogs,
+                                    icon: const Icon(Icons.visibility),
+                                    label: const Text('Görüntüle'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isLoading ? null : _shareLogs,
+                                    icon: const Icon(Icons.share),
+                                    label: const Text('Paylaş'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _isLoading ? null : _clearLogs,
+                                icon: const Icon(Icons.delete_sweep),
+                                label: const Text('Logları Temizle'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor:
+                                      Theme.of(context).colorScheme.error,
+                                  side: BorderSide(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _logout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Çıkış Yap'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // Log yönetimi metodları
+  Future<void> _viewLogs() async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final logs = await _logService.getLogs();
+      setState(() {
+        _logs = logs;
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Uygulama Logları'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: SingleChildScrollView(
+                child: SelectableText(_logs),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Kapat'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _shareLogs();
+                },
+                child: const Text('Paylaş'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Loglar yüklenemedi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareLogs() async {
+    try {
+      await _logService.shareLogs();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Loglar paylaşılamadı: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearLogs() async {
+    try {
+      await _logService.clearLogs();
+      await _loadLogInfo();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Loglar temizlendi'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Loglar temizlenemedi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
