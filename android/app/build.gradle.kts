@@ -22,6 +22,7 @@ android {
     namespace = "com.uricaryn.backgammon_score_tracker"
     compileSdk = 35
     ndkVersion = "27.0.12077973"
+    buildToolsVersion = "35.0.0"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -36,9 +37,9 @@ android {
     defaultConfig {
         applicationId = "com.uricaryn.backgammon_score_tracker"
         minSdk = 23
-        targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.0"
+        targetSdk = 35
+        versionCode = 4
+        versionName = "1.2.0"
     }
 
     signingConfigs {
@@ -89,6 +90,10 @@ dependencies {
     
     // Core library desugaring
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    
+    // AndroidX Core for latest API support
+    implementation("androidx.core:core:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
 }
 
 flutter {

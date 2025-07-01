@@ -6,6 +6,7 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/presentation/screens/new_game_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/players_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/edit_game_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/notifications_screen.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/match_details_dialog.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/player_stats_dialog.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -562,6 +563,17 @@ class _HomeScreenState extends State<HomeScreen>
       appBar: AppBar(
         title: const Text('Tavla Skor Takip'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationsScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () {
