@@ -15,6 +15,16 @@ class NotificationService {
 
   bool _isInitialized = false;
 
+  // Sosyal bildirim ID'leri
+  static const int _morningReminderId = 1001;
+  static const int _afternoonReminderId = 1002;
+  static const int _eveningReminderId = 1003;
+
+  // Sosyal bildirim saatleri
+  static const int _morningHour = 10; // 10:00
+  static const int _afternoonHour = 15; // 15:00
+  static const int _eveningHour = 20; // 20:00
+
   Future<void> initialize() async {
     if (_isInitialized) return;
 
@@ -211,6 +221,14 @@ class NotificationService {
         importance: Importance.defaultImportance,
       );
 
+      const AndroidNotificationChannel socialChannel =
+          AndroidNotificationChannel(
+        'backgammon_social_channel',
+        'Tavla Sosyal Bildirimleri',
+        description: 'Tavla sosyal etkileşim bildirimleri',
+        importance: Importance.defaultImportance,
+      );
+
       await _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
@@ -220,9 +238,132 @@ class NotificationService {
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(reminderChannel);
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(socialChannel);
     } catch (e) {
       // Hata durumunda sessizce geç
     }
   }
+
+  // Sosyal bildirimleri ayarla
+  Future<void> setupSocialNotifications() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    try {
+      // Önceki sosyal bildirimleri iptal et
+      await cancelNotification(_morningReminderId);
+      await cancelNotification(_afternoonReminderId);
+      await cancelNotification(_eveningReminderId);
+
+      // Günlük sosyal bildirimleri ayarla
+      await _scheduleDailySocialNotification(
+        _morningReminderId,
+        _morningHour,
+        'Günaydın! 🎲',
+        'Yeni bir tavla günü başladı! Arkadaşlarınızla oyun oynamaya ne dersiniz?',
+      );
+
+      await _scheduleDailySocialNotification(
+        _afternoonReminderId,
+        _afternoonHour,
+        'Öğleden Sonra Molası ☕',
+        'Tavla oynayarak stres atmanın tam zamanı! Hemen bir oyun başlatın.',
+      );
+
+      await _scheduleDailySocialNotification(
+        _eveningReminderId,
+        _eveningHour,
+        'Akşam Vakti 🏆',
+        'Günün sonunda tavla şampiyonluğunu kim kazanacak? Hemen oynamaya başlayın!',
+      );
+    } catch (e) {
+      print('Sosyal bildirimler ayarlanırken hata: $e');
+    }
+  }
+
+  // Günlük sosyal bildirim zamanla
+  Future<void> _scheduleDailySocialNotification(
+    int id,
+    int hour,
+    String title,
+    String body,
+  ) async {
+    try {
+      final hasPermission = await checkPermissions();
+      if (!hasPermission) return;
+
+      final now = DateTime.now();
+      var scheduledDate = DateTime(now.year, now.month, now.day, hour);
+
+      // Eğer bugünün saati geçtiyse, yarına ayarla
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+        'backgammon_social_channel',
+        'Tavla Sosyal Bildirimleri',
+        channelDescription: 'Tavla sosyal etkileşim bildirimleri',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        showWhen: true,
+        enableVibration: true,
+        playSound: true,
+      );
+
+      const DarwinNotificationDetails iOSPlatformChannelSpecifics =
+          DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+
+      const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+        iOS: iOSPlatformChannelSpecifics,
+      );
+
+      await _localNotifications.zonedSchedule(
+        id,
+        title,
+        body,
+        tz.TZDateTime.from(scheduledDate, tz.local),
+        platformChannelSpecifics,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: 'social_reminder',
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (e) {
+      print('Günlük bildirim zamanlanırken hata: $e');
+    }
+  }
+
+  // Sosyal bildirimleri durdur
+  Future<void> stopSocialNotifications() async {
+    await cancelNotification(_morningReminderId);
+    await cancelNotification(_afternoonReminderId);
+    await cancelNotification(_eveningReminderId);
+  }
+
+  // Sosyal bildirim durumunu kontrol et
+  Future<bool> areSocialNotificationsActive() async {
+    try {
+      final pendingNotifications =
+          await _localNotifications.pendingNotificationRequests();
+      return pendingNotifications.any((notification) =>
+          notification.id == _morningReminderId ||
+          notification.id == _afternoonReminderId ||
+          notification.id == _eveningReminderId);
+    } catch (e) {
+      return false;
+    }
+  }
 }
- 

@@ -13,6 +13,7 @@ import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
+import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -26,18 +27,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _usernameController = TextEditingController();
   final _sessionService = SessionService();
   final _firebaseService = FirebaseService();
+  final _guestDataService = GuestDataService();
   final _logService = LogService();
   bool _isLoading = false;
   int _remainingSessionTime = 0;
   String _logFileSize = '0 KB';
   String _logs = '';
+  bool _isGuestUser = false;
+  bool _hasGuestData = false;
 
   @override
   void initState() {
     super.initState();
+    _checkUserType();
     _loadUserData();
     _loadSessionInfo();
     _loadLogInfo();
+    _checkGuestData();
+  }
+
+  void _checkUserType() {
+    _isGuestUser = _firebaseService.isCurrentUserGuest();
+  }
+
+  Future<void> _checkGuestData() async {
+    if (_isGuestUser) {
+      _hasGuestData = await _guestDataService.hasGuestData();
+    }
   }
 
   @override
@@ -145,11 +161,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
+    String message = 'Çıkış yapmak istediğinizden emin misiniz?';
+
+    if (_isGuestUser && _hasGuestData) {
+      message =
+          'Misafir kullanıcı olarak çıkış yaparsanız, yerel verileriniz silinecektir. Devam etmek istiyor musunuz?';
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Çıkış Yap'),
-        content: const Text('Çıkış yapmak istediğinizden emin misiniz?'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -165,6 +188,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed == true) {
       try {
+        if (_isGuestUser && _hasGuestData) {
+          await _guestDataService.clearGuestData();
+        }
         await _sessionService.logout();
         if (mounted) {
           Navigator.pushNamedAndRemoveUntil(
@@ -179,6 +205,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
             SnackBar(content: Text('Çıkış yapılırken hata oluştu: $e')),
           );
         }
+      }
+    }
+  }
+
+  // Misafir verileri Firebase'e aktar
+  Future<void> _migrateGuestData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      await _guestDataService.migrateGuestDataToFirebase();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Verileriniz başarıyla aktarıldı!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Misafir kullanıcı durumunu güncelle
+        setState(() {
+          _isGuestUser = false;
+          _hasGuestData = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Veri aktarımı başarısız: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -404,6 +467,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 20),
+                            if (_isGuestUser && _hasGuestData) ...[
+                              FilledButton.icon(
+                                onPressed:
+                                    _isLoading ? null : _migrateGuestData,
+                                icon: _isLoading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.cloud_upload),
+                                label: Text(_isLoading
+                                    ? 'Aktarılıyor...'
+                                    : 'Verileri Aktar'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Misafir kullanıcı olarak kaydettiğiniz verileri kalıcı hesabınıza aktarın',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             FilledButton.icon(
                               onPressed: _isLoading ? null : _saveUserData,
                               icon: _isLoading

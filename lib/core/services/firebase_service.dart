@@ -1,17 +1,21 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_messaging_service.dart';
+import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
   final NotificationService _notificationService = NotificationService();
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
+  final GuestDataService _guestDataService = GuestDataService();
   final LogService _logService = LogService();
 
   // Kullanıcı işlemleri
@@ -153,8 +157,12 @@ class FirebaseService {
 
   Future<void> signOut() async {
     try {
+      _logService.info('Signing out user', tag: 'Auth');
+      await _googleSignIn.signOut();
       await _auth.signOut();
+      _logService.info('Sign out successful', tag: 'Auth');
     } catch (e) {
+      _logService.error('Sign out failed: $e', tag: 'Auth', error: e);
       throw Exception(ErrorService.generalError);
     }
   }
@@ -432,5 +440,202 @@ class FirebaseService {
   // Sosyal bildirimleri manuel olarak tetikle
   Future<void> triggerSocialNotification() async {
     await sendSocialNotification();
+  }
+
+  // Misafir kullanıcı girişi
+  Future<UserCredential> signInAnonymously() async {
+    try {
+      _logService.info('Misafir kullanıcı girişi başlatıldı', tag: 'Auth');
+
+      // Firebase Auth durumunu kontrol et
+      final currentUser = _auth.currentUser;
+      _logService.info('Mevcut kullanıcı: ${currentUser?.uid ?? 'Yok'}',
+          tag: 'Auth');
+
+      final userCredential = await _auth.signInAnonymously();
+
+      _logService.info('Firebase Auth yanıtı alındı', tag: 'Auth');
+
+      if (userCredential.user != null) {
+        _logService.info('Kullanıcı oluşturuldu: ${userCredential.user!.uid}',
+            tag: 'Auth');
+
+        try {
+          // Misafir kullanıcı dokümanı oluştur
+          await createGuestUserDocument(userCredential.user!);
+          _logService.info(
+              'Misafir kullanıcı girişi başarılı: ${userCredential.user!.uid}',
+              tag: 'Auth');
+        } catch (e) {
+          _logService.warning('Misafir kullanıcı dokümanı oluşturulamadı: $e',
+              tag: 'Auth');
+          // Devam et, doküman oluşturulamasa bile
+        }
+      } else {
+        _logService.error('Kullanıcı oluşturulamadı', tag: 'Auth');
+        throw Exception('Kullanıcı oluşturulamadı');
+      }
+
+      return userCredential;
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'operation-not-allowed':
+          errorMessage =
+              'Misafir kullanıcı girişi etkinleştirilmemiş. Firebase Console\'da Anonymous Authentication\'ı etkinleştirin.';
+          break;
+        case 'network-request-failed':
+          errorMessage = ErrorService.authNetworkRequestFailed;
+          break;
+        case 'too-many-requests':
+          errorMessage = ErrorService.authTooManyRequests;
+          break;
+        default:
+          errorMessage =
+              'Misafir kullanıcı girişi başarısız: ${e.code} - ${e.message}';
+      }
+      _logService.error(
+          'Misafir kullanıcı girişi başarısız: ${e.code} - ${e.message}',
+          tag: 'Auth',
+          error: e);
+      throw Exception(errorMessage);
+    } catch (e) {
+      _logService.error('Beklenmeyen misafir giriş hatası',
+          tag: 'Auth', error: e);
+      throw Exception('Beklenmeyen hata: $e');
+    }
+  }
+
+  // Misafir kullanıcı dokümanı oluştur
+  Future<void> createGuestUserDocument(User user) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) {
+        await _firestore.collection('users').doc(user.uid).set({
+          'isGuest': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastLogin': FieldValue.serverTimestamp(),
+          'isEmailVerified': false,
+          'themeMode': 'system',
+          // Bildirim tercihleri - misafir kullanıcılar için kapalı
+          'notificationEnabled': false,
+          'newGameNotifications': false,
+          'statisticsNotifications': false,
+          'reminderNotifications': false,
+          'socialNotifications': false,
+        });
+      }
+    } catch (e) {
+      throw Exception(ErrorService.firestorePermissionDenied);
+    }
+  }
+
+  // Kullanıcının misafir olup olmadığını kontrol et
+  bool isGuestUser(User? user) {
+    return user?.isAnonymous ?? false;
+  }
+
+  // Kullanıcının misafir olup olmadığını kontrol et (mevcut kullanıcı için)
+  bool isCurrentUserGuest() {
+    final user = _auth.currentUser;
+    return isGuestUser(user);
+  }
+
+  // Google Sign-In methods
+  Future<UserCredential?> signInWithGoogle() async {
+    try {
+      _logService.info('Attempting Google sign in', tag: 'Auth');
+
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        _logService.info('Google sign in cancelled by user', tag: 'Auth');
+        return null;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Create a new credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in to Firebase with the Google credential
+      final userCredential = await _auth.signInWithCredential(credential);
+      _logService.info('Google sign in successful: ${userCredential.user?.uid}',
+          tag: 'Auth');
+
+      // Create or update user document
+      await createOrUpdateUserDocument(userCredential.user!);
+
+      return userCredential;
+    } catch (e) {
+      _logService.error('Google sign in failed: $e', tag: 'Auth', error: e);
+      throw Exception('Google authentication failed: ${e.toString()}');
+    }
+  }
+
+  // Create or update user document for Google Sign-In
+  Future<void> createOrUpdateUserDocument(User user) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!userDoc.exists) {
+        // New user - create document
+        await _firestore.collection('users').doc(user.uid).set({
+          'email': user.email,
+          'displayName': user.displayName,
+          'photoURL': user.photoURL,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastLogin': FieldValue.serverTimestamp(),
+          'isEmailVerified': user.emailVerified,
+          'isGuest': false,
+          'themeMode': 'system',
+          'notificationEnabled': true,
+          'newGameNotifications': false,
+          'statisticsNotifications': false,
+          'reminderNotifications': false,
+          'socialNotifications': true,
+        });
+
+        // Initialize notification services
+        await _initializeNotificationServices();
+
+        // Misafir verileri varsa Firebase'e aktar
+        await _migrateGuestDataIfExists();
+      } else {
+        // Existing user - update last login
+        await _firestore.collection('users').doc(user.uid).update({
+          'lastLogin': FieldValue.serverTimestamp(),
+          'isEmailVerified': user.emailVerified,
+          'isGuest': false,
+        });
+      }
+    } catch (e) {
+      throw Exception(ErrorService.firestorePermissionDenied);
+    }
+  }
+
+  // Misafir verileri varsa Firebase'e aktar
+  Future<void> _migrateGuestDataIfExists() async {
+    try {
+      final hasGuestData = await _guestDataService.hasGuestData();
+      final isAlreadyMigrated = await _guestDataService.isGuestDataMigrated();
+
+      if (hasGuestData && !isAlreadyMigrated) {
+        _logService.info('Misafir veriler bulundu, Firebase\'e aktarılıyor...',
+            tag: 'Auth');
+        await _guestDataService.migrateGuestDataToFirebase();
+        _logService.info('Misafir veriler başarıyla Firebase\'e aktarıldı',
+            tag: 'Auth');
+      }
+    } catch (e) {
+      _logService.error('Misafir veriler aktarılamadı: $e',
+          tag: 'Auth', error: e);
+      // Misafir veriler aktarılamasa bile uygulama çalışmaya devam etsin
+    }
   }
 }

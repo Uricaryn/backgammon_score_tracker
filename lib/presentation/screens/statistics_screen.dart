@@ -14,11 +14,72 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   Map<String, dynamic>? _statistics;
   bool _isLoading = true;
+  bool _isGuestUser = false;
 
   @override
   void initState() {
     super.initState();
+    _checkUserType();
     _loadStatistics();
+  }
+
+  void _checkUserType() {
+    _isGuestUser = _firebaseService.isCurrentUserGuest();
+  }
+
+  Widget _buildGuestUserMessage() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Icon(
+                Icons.analytics,
+                size: 80,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withOpacity(0.5),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'İstatistikler Sadece Giriş Yapan Kullanıcılar İçin',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Detaylı istatistikleri görüntülemek için giriş yapmanız gerekiyor. Misafir kullanıcılar sadece temel skor tablosunu görebilir.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pushReplacementNamed(context, '/login');
+              },
+              icon: const Icon(Icons.login),
+              label: const Text('Giriş Yap'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadStatistics() async {
@@ -61,88 +122,93 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       ),
       body: BackgroundBoard(
         child: SafeArea(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _loadStatistics,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        StyledCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+          child: _isGuestUser
+              ? _buildGuestUserMessage()
+              : _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      onRefresh: _loadStatistics,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            StyledCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      Icons.analytics,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                      size: 28,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.analytics,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          size: 28,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Oyun İstatistikleri',
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Oyun İstatistikleri',
-                                    style: TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                    ),
+                                  const SizedBox(height: 20),
+                                  _buildStatCard(
+                                    context,
+                                    'Toplam Oyun',
+                                    '${_statistics?['totalGames'] ?? 0}',
+                                    Icons.games,
+                                    Colors.blue,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildStatCard(
+                                    context,
+                                    'Kazanma Oranı',
+                                    '%${_statistics?['winRate'] ?? '0'}',
+                                    Icons.emoji_events,
+                                    Colors.amber,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildStatCard(
+                                    context,
+                                    'En Yüksek Skor',
+                                    '${_statistics?['highestScore'] ?? 0}',
+                                    Icons.star,
+                                    Colors.orange,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildStatCard(
+                                    context,
+                                    'En Çok Oynanan Rakip',
+                                    _statistics?['mostPlayedOpponent'] ?? 'Yok',
+                                    Icons.people,
+                                    Colors.green,
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 20),
-                              _buildStatCard(
-                                context,
-                                'Toplam Oyun',
-                                '${_statistics?['totalGames'] ?? 0}',
-                                Icons.games,
-                                Colors.blue,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildStatCard(
-                                context,
-                                'Kazanma Oranı',
-                                '%${_statistics?['winRate'] ?? '0'}',
-                                Icons.emoji_events,
-                                Colors.amber,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildStatCard(
-                                context,
-                                'En Yüksek Skor',
-                                '${_statistics?['highestScore'] ?? 0}',
-                                Icons.star,
-                                Colors.orange,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildStatCard(
-                                context,
-                                'En Çok Oynanan Rakip',
-                                _statistics?['mostPlayedOpponent'] ?? 'Yok',
-                                Icons.people,
-                                Colors.green,
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
         ),
       ),
     );

@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:ui';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 
 class NewGameScreen extends StatefulWidget {
   const NewGameScreen({super.key});
@@ -17,11 +18,13 @@ class NewGameScreen extends StatefulWidget {
 class _NewGameScreenState extends State<NewGameScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firebaseService = FirebaseService();
+  final _guestDataService = GuestDataService();
   String? _selectedPlayer1;
   String? _selectedPlayer2;
   int _player1Score = 0;
   int _player2Score = 0;
   bool _isLoading = false;
+  bool _isGuestUser = false;
 
   // Sihirbaz adımları için state
   int _currentStep = 0;
@@ -43,6 +46,253 @@ class _NewGameScreenState extends State<NewGameScreen> {
     'Maçı kaydedin'
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _checkUserType();
+  }
+
+  void _checkUserType() {
+    _isGuestUser = _firebaseService.isCurrentUserGuest();
+  }
+
+  Widget _buildGuestPlayersList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _guestDataService.getGuestPlayers(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Hata: ${snapshot.error}',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final players = snapshot.data ?? [];
+
+        if (players.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.people_outline,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Henüz oyuncu eklenmemiş',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Aşağıdaki "Yeni Oyuncu Ekle" butonunu kullanarak ilk oyuncunuzu ekleyin.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final playerNames =
+            players.map((player) => player['name'] as String).toList();
+
+        return Column(
+          children: [
+            // Son Oyuncular Hızlı Seçim
+            if (playerNames.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Son Oyuncular',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: playerNames.take(4).map((player) {
+                        final isSelected1 = _selectedPlayer1 == player;
+                        final isSelected2 = _selectedPlayer2 == player;
+                        final isSelected = isSelected1 || isSelected2;
+
+                        return FilterChip(
+                          label: Text(player),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            if (selected) {
+                              if (_selectedPlayer1 == null) {
+                                setState(() {
+                                  _selectedPlayer1 = player;
+                                });
+                              } else if (_selectedPlayer2 == null &&
+                                  _selectedPlayer1 != player) {
+                                setState(() {
+                                  _selectedPlayer2 = player;
+                                });
+                              }
+                            } else {
+                              if (_selectedPlayer1 == player) {
+                                setState(() {
+                                  _selectedPlayer1 = null;
+                                });
+                              } else if (_selectedPlayer2 == player) {
+                                setState(() {
+                                  _selectedPlayer2 = null;
+                                });
+                              }
+                            }
+                          },
+                          avatar: isSelected1
+                              ? const Icon(Icons.person, size: 16)
+                              : isSelected2
+                                  ? const Icon(Icons.person_outline, size: 16)
+                                  : null,
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            // Dropdown Seçimi
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
+              ),
+              child: DropdownButtonFormField<String>(
+                value: _selectedPlayer1,
+                decoration: InputDecoration(
+                  labelText: '1. Oyuncu',
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  prefixIcon: Icon(
+                    Icons.person,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                items: playerNames
+                    .map((player) => DropdownMenuItem(
+                          value: player,
+                          child: Text(
+                            player,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedPlayer1 = value;
+                  });
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
+              ),
+              child: DropdownButtonFormField<String>(
+                value: _selectedPlayer2,
+                decoration: InputDecoration(
+                  labelText: '2. Oyuncu',
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  prefixIcon: Icon(
+                    Icons.person,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                items: playerNames
+                    .map((player) => DropdownMenuItem(
+                          value: player,
+                          child: Text(
+                            player,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedPlayer2 = value;
+                  });
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _showQuickAddPlayerDialog() async {
     final TextEditingController nameController = TextEditingController();
 
@@ -50,32 +300,34 @@ class _NewGameScreenState extends State<NewGameScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Hızlı Oyuncu Ekle'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: 'Oyuncu Adı',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-          onSubmitted: (value) async {
-            if (value.trim().isNotEmpty) {
-              try {
-                await _firebaseService.savePlayer(value.trim());
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Oyuncu eklendi!')),
-                  );
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Oyuncu Adı',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+              onSubmitted: (value) async {
+                if (value.trim().isNotEmpty) {
+                  await _addPlayer(value.trim());
                 }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString())),
-                  );
-                }
-              }
-            }
-          },
+              },
+            ),
+            if (_isGuestUser) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Misafir kullanıcı olarak oyuncu yerel olarak kaydedilecek',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -86,21 +338,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
             onPressed: () async {
               final name = nameController.text.trim();
               if (name.isNotEmpty) {
-                try {
-                  await _firebaseService.savePlayer(name);
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Oyuncu eklendi!')),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.toString())),
-                    );
-                  }
-                }
+                await _addPlayer(name);
               }
             },
             child: const Text('Ekle'),
@@ -108,6 +346,34 @@ class _NewGameScreenState extends State<NewGameScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _addPlayer(String name) async {
+    try {
+      if (_isGuestUser) {
+        await _guestDataService.saveGuestPlayer(name);
+      } else {
+        await _firebaseService.savePlayer(name);
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        setState(() {}); // Misafir kullanıcılar için listeyi yenile
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isGuestUser
+                ? 'Oyuncu yerel olarak eklendi!'
+                : 'Oyuncu eklendi!'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
   }
 
   // Adım yönetimi metodları
@@ -164,17 +430,28 @@ class _NewGameScreenState extends State<NewGameScreen> {
     });
 
     try {
-      await _firebaseService.saveGame(
-        player1: _selectedPlayer1!,
-        player2: _selectedPlayer2!,
-        player1Score: _player1Score,
-        player2Score: _player2Score,
-      );
+      if (_isGuestUser) {
+        await _guestDataService.saveGuestGame(
+          player1: _selectedPlayer1!,
+          player2: _selectedPlayer2!,
+          player1Score: _player1Score,
+          player2Score: _player2Score,
+        );
+      } else {
+        await _firebaseService.saveGame(
+          player1: _selectedPlayer1!,
+          player2: _selectedPlayer2!,
+          player1Score: _player1Score,
+          player2Score: _player2Score,
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Maç başarıyla kaydedildi!'),
+          SnackBar(
+            content: Text(_isGuestUser
+                ? 'Maç başarıyla kaydedildi! (Yerel olarak)'
+                : 'Maç başarıyla kaydedildi!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -357,265 +634,282 @@ class _NewGameScreenState extends State<NewGameScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('players')
-                      .where('userId', isEqualTo: userId)
-                      .orderBy('createdAt', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Hata: ${snapshot.error}',
-                                style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onErrorContainer,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(),
-                        ),
-                      );
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceVariant,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.people_outline,
-                              size: 48,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Henüz oyuncu eklenmemiş',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                _isGuestUser
+                    ? _buildGuestPlayersList()
+                    : StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('players')
+                            .where('userId', isEqualTo: userId)
+                            .orderBy('createdAt', descending: true)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
                                 color: Theme.of(context)
                                     .colorScheme
-                                    .onSurfaceVariant,
+                                    .errorContainer,
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Aşağıdaki "Yeni Oyuncu Ekle" butonunu kullanarak ilk oyuncunuzu ekleyin.',
-                              style: TextStyle(
-                                fontSize: 14,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Hata: ${snapshot.error}',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onErrorContainer,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
                                 color: Theme.of(context)
                                     .colorScheme
-                                    .onSurfaceVariant,
+                                    .surfaceVariant,
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      );
-                    }
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.people_outline,
+                                    size: 48,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withOpacity(0.5),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Henüz oyuncu eklenmemiş',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Aşağıdaki "Yeni Oyuncu Ekle" butonunu kullanarak ilk oyuncunuzu ekleyin.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
 
-                    final players = snapshot.data!.docs
-                        .map((doc) => doc.data() as Map<String, dynamic>)
-                        .map((data) => data['name'] as String)
-                        .toList();
+                          final players = snapshot.data!.docs
+                              .map((doc) => doc.data() as Map<String, dynamic>)
+                              .map((data) => data['name'] as String)
+                              .toList();
 
-                    return Column(
-                      children: [
-                        // Son Oyuncular Hızlı Seçim
-                        if (players.isNotEmpty) ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer
-                                  .withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Son Oyuncular',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
+                          return Column(
+                            children: [
+                              // Son Oyuncular Hızlı Seçim
+                              if (players.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer
+                                        .withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Son Oyuncular',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: players.take(4).map((player) {
+                                          final isSelected1 =
+                                              _selectedPlayer1 == player;
+                                          final isSelected2 =
+                                              _selectedPlayer2 == player;
+                                          final isSelected =
+                                              isSelected1 || isSelected2;
+
+                                          return FilterChip(
+                                            label: Text(player),
+                                            selected: isSelected,
+                                            onSelected: (selected) {
+                                              if (selected) {
+                                                if (_selectedPlayer1 == null) {
+                                                  setState(() {
+                                                    _selectedPlayer1 = player;
+                                                  });
+                                                } else if (_selectedPlayer2 ==
+                                                        null &&
+                                                    _selectedPlayer1 !=
+                                                        player) {
+                                                  setState(() {
+                                                    _selectedPlayer2 = player;
+                                                  });
+                                                }
+                                              } else {
+                                                if (_selectedPlayer1 ==
+                                                    player) {
+                                                  setState(() {
+                                                    _selectedPlayer1 = null;
+                                                  });
+                                                } else if (_selectedPlayer2 ==
+                                                    player) {
+                                                  setState(() {
+                                                    _selectedPlayer2 = null;
+                                                  });
+                                                }
+                                              }
+                                            },
+                                            avatar: isSelected1
+                                                ? const Icon(Icons.person,
+                                                    size: 16)
+                                                : isSelected2
+                                                    ? const Icon(
+                                                        Icons.person_outline,
+                                                        size: 16)
+                                                    : null,
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: players.take(4).map((player) {
-                                    final isSelected1 =
-                                        _selectedPlayer1 == player;
-                                    final isSelected2 =
-                                        _selectedPlayer2 == player;
-                                    final isSelected =
-                                        isSelected1 || isSelected2;
-
-                                    return FilterChip(
-                                      label: Text(player),
-                                      selected: isSelected,
-                                      onSelected: (selected) {
-                                        if (selected) {
-                                          if (_selectedPlayer1 == null) {
-                                            setState(() {
-                                              _selectedPlayer1 = player;
-                                            });
-                                          } else if (_selectedPlayer2 == null &&
-                                              _selectedPlayer1 != player) {
-                                            setState(() {
-                                              _selectedPlayer2 = player;
-                                            });
-                                          }
-                                        } else {
-                                          if (_selectedPlayer1 == player) {
-                                            setState(() {
-                                              _selectedPlayer1 = null;
-                                            });
-                                          } else if (_selectedPlayer2 ==
-                                              player) {
-                                            setState(() {
-                                              _selectedPlayer2 = null;
-                                            });
-                                          }
-                                        }
-                                      },
-                                      avatar: isSelected1
-                                          ? const Icon(Icons.person, size: 16)
-                                          : isSelected2
-                                              ? const Icon(Icons.person_outline,
-                                                  size: 16)
-                                              : null,
-                                    );
-                                  }).toList(),
-                                ),
+                                const SizedBox(height: 16),
                               ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        // Dropdown Seçimi
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outline
-                                  .withOpacity(0.2),
-                            ),
-                          ),
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedPlayer1,
-                            decoration: InputDecoration(
-                              labelText: '1. Oyuncu',
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              prefixIcon: Icon(
-                                Icons.person,
-                                color: Theme.of(context).colorScheme.primary,
+                              // Dropdown Seçimi
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .outline
+                                        .withOpacity(0.2),
+                                  ),
+                                ),
+                                child: DropdownButtonFormField<String>(
+                                  value: _selectedPlayer1,
+                                  decoration: InputDecoration(
+                                    labelText: '1. Oyuncu',
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 12),
+                                    prefixIcon: Icon(
+                                      Icons.person,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  items: players
+                                      .map((player) => DropdownMenuItem(
+                                            value: player,
+                                            child: Text(
+                                              player,
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          ))
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedPlayer1 = value;
+                                    });
+                                  },
+                                ),
                               ),
-                            ),
-                            items: players
-                                .map((player) => DropdownMenuItem(
-                                      value: player,
-                                      child: Text(
-                                        player,
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ))
-                                .toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedPlayer1 = value;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outline
-                                  .withOpacity(0.2),
-                            ),
-                          ),
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedPlayer2,
-                            decoration: InputDecoration(
-                              labelText: '2. Oyuncu',
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              prefixIcon: Icon(
-                                Icons.person,
-                                color: Theme.of(context).colorScheme.primary,
+                              const SizedBox(height: 16),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .outline
+                                        .withOpacity(0.2),
+                                  ),
+                                ),
+                                child: DropdownButtonFormField<String>(
+                                  value: _selectedPlayer2,
+                                  decoration: InputDecoration(
+                                    labelText: '2. Oyuncu',
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 12),
+                                    prefixIcon: Icon(
+                                      Icons.person,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  items: players
+                                      .map((player) => DropdownMenuItem(
+                                            value: player,
+                                            child: Text(
+                                              player,
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          ))
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedPlayer2 = value;
+                                    });
+                                  },
+                                ),
                               ),
-                            ),
-                            items: players
-                                .map((player) => DropdownMenuItem(
-                                      value: player,
-                                      child: Text(
-                                        player,
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ))
-                                .toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedPlayer2 = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                            ],
+                          );
+                        },
+                      ),
               ],
             ),
           ),

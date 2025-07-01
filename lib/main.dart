@@ -41,6 +41,9 @@ void main() async {
     await notificationService.initialize();
     await messagingService.initialize();
     await notificationService.createNotificationChannels();
+
+    // Sosyal bildirimleri ayarla
+    await notificationService.setupSocialNotifications();
   } catch (e) {
     // Bildirim servisleri başarısız olsa bile uygulama çalışmaya devam etsin
   }

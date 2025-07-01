@@ -62,8 +62,7 @@ class FirebaseMessagingService {
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
       // Background mesajları için
-      FirebaseMessaging.onBackgroundMessage(
-          _firebaseMessagingBackgroundHandler);
+      // Background handler main.dart'ta tanımlanmış
 
       // Bildirime tıklandığında
       FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
@@ -148,12 +147,6 @@ class FirebaseMessagingService {
   NotificationType _getNotificationType(Map<String, dynamic> data) {
     final type = data['type'] as String?;
     switch (type) {
-      case 'newGame':
-        return NotificationType.newGame;
-      case 'statistics':
-        return NotificationType.statistics;
-      case 'reminder':
-        return NotificationType.reminder;
       case 'social':
         return NotificationType.social;
       default:
@@ -270,15 +263,12 @@ class FirebaseMessagingService {
       final data = userDoc.data()!;
       final preferences = NotificationPreferences.fromMap({
         'enabled': data['notificationEnabled'] ?? true,
-        'newGameNotifications': data['newGameNotifications'] ?? true,
-        'statisticsNotifications': data['statisticsNotifications'] ?? true,
-        'reminderNotifications': data['reminderNotifications'] ?? true,
         'socialNotifications': data['socialNotifications'] ?? true,
         'fcmToken': data['fcmToken'],
       });
 
       debugPrint(
-          'Notification preferences loaded: enabled=${preferences.enabled}, newGameNotifications=${preferences.newGameNotifications}');
+          'Notification preferences loaded: enabled=${preferences.enabled}, socialNotifications=${preferences.socialNotifications}');
       return preferences;
     } catch (e) {
       debugPrint('Error getting notification preferences: $e');
@@ -296,9 +286,6 @@ class FirebaseMessagingService {
 
       await _firestore.collection('users').doc(user.uid).update({
         'notificationEnabled': preferences.enabled,
-        'newGameNotifications': preferences.newGameNotifications,
-        'statisticsNotifications': preferences.statisticsNotifications,
-        'reminderNotifications': preferences.reminderNotifications,
         'socialNotifications': preferences.socialNotifications,
         'fcmToken': preferences.fcmToken,
         'lastPreferencesUpdate': FieldValue.serverTimestamp(),
@@ -315,9 +302,4 @@ class FirebaseMessagingService {
   bool get isInitialized => _isInitialized;
 }
 
-// Background message handler
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  debugPrint('Handling a background message: ${message.messageId}');
-  // Background'da gelen mesajları işle
-}
+// Background message handler main.dart'ta tanımlanmış

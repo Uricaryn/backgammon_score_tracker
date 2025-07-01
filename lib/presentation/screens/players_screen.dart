@@ -3,11 +3,14 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/presentation/screens/edit_player_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/player_match_history_screen.dart';
 import 'dart:ui';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
+import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 
 class PlayersScreen extends StatefulWidget {
   const PlayersScreen({super.key});
@@ -19,7 +22,65 @@ class PlayersScreen extends StatefulWidget {
 class _PlayersScreenState extends State<PlayersScreen> {
   final _formKey = GlobalKey<FormState>();
   final _playerNameController = TextEditingController();
+  final _firebaseService = FirebaseService();
+  final _guestDataService = GuestDataService();
   bool _isLoading = false;
+  bool _isGuestUser = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserType();
+  }
+
+  void _checkUserType() {
+    _isGuestUser = _firebaseService.isCurrentUserGuest();
+  }
+
+  Widget _buildGuestPlayersList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _guestDataService.getGuestPlayers(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('Hata: ${snapshot.error}'),
+          );
+        }
+
+        final players = snapshot.data ?? [];
+
+        if (players.isEmpty) {
+          return const Center(
+            child: Text('Henüz oyuncu eklenmemiş'),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: players.length,
+          itemBuilder: (context, index) {
+            final player = players[index];
+            final name = player['name'] as String;
+            final playerId = player['id'] as String;
+
+            return PlayerCard(
+              playerName: name,
+              playerId: playerId,
+              onTap: () => _showPlayerOptions(
+                context,
+                name,
+                playerId,
+                this.context,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   Future<void> _addPlayer() async {
     if (!_formKey.currentState!.validate()) return;
@@ -29,12 +90,21 @@ class _PlayersScreenState extends State<PlayersScreen> {
     });
 
     try {
-      await FirebaseService().savePlayer(_playerNameController.text);
+      if (_isGuestUser) {
+        await _guestDataService.saveGuestPlayer(_playerNameController.text);
+      } else {
+        await FirebaseService().savePlayer(_playerNameController.text);
+      }
 
       if (mounted) {
         _playerNameController.clear();
+        setState(() {}); // Misafir kullanıcılar için listeyi yenile
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(ErrorService.successPlayerSaved)),
+          SnackBar(
+            content: Text(_isGuestUser
+                ? 'Oyuncu yerel olarak kaydedildi'
+                : ErrorService.successPlayerSaved),
+          ),
         );
       }
     } catch (e) {
@@ -54,13 +124,23 @@ class _PlayersScreenState extends State<PlayersScreen> {
 
   Future<void> _deletePlayer(String playerId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('players')
-          .doc(playerId)
-          .delete();
+      if (_isGuestUser) {
+        await _guestDataService.deleteGuestPlayer(playerId);
+      } else {
+        await FirebaseFirestore.instance
+            .collection('players')
+            .doc(playerId)
+            .delete();
+      }
+
       if (mounted) {
+        setState(() {}); // Misafir kullanıcılar için listeyi yenile
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(ErrorService.successPlayerDeleted)),
+          SnackBar(
+            content: Text(_isGuestUser
+                ? 'Oyuncu yerel olarak silindi'
+                : ErrorService.successPlayerDeleted),
+          ),
         );
       }
     } on FirebaseException catch (e) {
@@ -230,53 +310,62 @@ class _PlayersScreenState extends State<PlayersScreen> {
                                 ),
                                 const SizedBox(height: 20),
                                 Expanded(
-                                  child: StreamBuilder<QuerySnapshot>(
-                                    stream: FirebaseFirestore.instance
-                                        .collection('players')
-                                        .where('userId', isEqualTo: userId)
-                                        .orderBy('createdAt', descending: true)
-                                        .snapshots(),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.hasError) {
-                                        return Text('Hata: ${snapshot.error}');
-                                      }
+                                  child: _isGuestUser
+                                      ? _buildGuestPlayersList()
+                                      : StreamBuilder<QuerySnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('players')
+                                              .where('userId',
+                                                  isEqualTo: userId)
+                                              .orderBy('createdAt',
+                                                  descending: true)
+                                              .snapshots(),
+                                          builder: (context, snapshot) {
+                                            if (snapshot.hasError) {
+                                              return Text(
+                                                  'Hata: ${snapshot.error}');
+                                            }
 
-                                      if (snapshot.connectionState ==
-                                          ConnectionState.waiting) {
-                                        return const Center(
-                                            child: CircularProgressIndicator());
-                                      }
+                                            if (snapshot.connectionState ==
+                                                ConnectionState.waiting) {
+                                              return const Center(
+                                                  child:
+                                                      CircularProgressIndicator());
+                                            }
 
-                                      if (!snapshot.hasData ||
-                                          snapshot.data!.docs.isEmpty) {
-                                        return const Center(
-                                          child:
-                                              Text('Henüz oyuncu eklenmemiş'),
-                                        );
-                                      }
+                                            if (!snapshot.hasData ||
+                                                snapshot.data!.docs.isEmpty) {
+                                              return const Center(
+                                                child: Text(
+                                                    'Henüz oyuncu eklenmemiş'),
+                                              );
+                                            }
 
-                                      return ListView.builder(
-                                        itemCount: snapshot.data!.docs.length,
-                                        itemBuilder: (context, index) {
-                                          final doc =
-                                              snapshot.data!.docs[index];
-                                          final data = doc.data()
-                                              as Map<String, dynamic>;
-                                          final name = data['name'] as String;
+                                            return ListView.builder(
+                                              itemCount:
+                                                  snapshot.data!.docs.length,
+                                              itemBuilder: (context, index) {
+                                                final doc =
+                                                    snapshot.data!.docs[index];
+                                                final data = doc.data()
+                                                    as Map<String, dynamic>;
+                                                final name =
+                                                    data['name'] as String;
 
-                                          return PlayerCard(
-                                            playerName: name,
-                                            playerId: doc.id,
-                                            onTap: () => _showPlayerOptions(
-                                                context,
-                                                name,
-                                                doc.id,
-                                                this.context),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
+                                                return PlayerCard(
+                                                  playerName: name,
+                                                  playerId: doc.id,
+                                                  onTap: () =>
+                                                      _showPlayerOptions(
+                                                          context,
+                                                          name,
+                                                          doc.id,
+                                                          this.context),
+                                                );
+                                              },
+                                            );
+                                          },
+                                        ),
                                 ),
                               ],
                             ),
@@ -381,32 +470,144 @@ class _PlayersScreenState extends State<PlayersScreen> {
             ListTile(
               leading: Icon(
                 Icons.analytics,
-                color: Theme.of(context).colorScheme.primary,
+                color: _isGuestUser
+                    ? Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withOpacity(0.5)
+                    : Theme.of(context).colorScheme.primary,
               ),
-              title: const Text('İstatistikleri Görüntüle'),
-              subtitle:
-                  const Text('Oyuncunun detaylı istatistiklerini görüntüle'),
-              onTap: () {
-                Navigator.pop(context);
-                Future.microtask(() {
-                  _showPlayerStatistics(parentContext, playerName);
-                });
-              },
+              title: Text(
+                'İstatistikleri Görüntüle',
+                style: TextStyle(
+                  color: _isGuestUser
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5)
+                      : null,
+                ),
+              ),
+              subtitle: Text(
+                _isGuestUser
+                    ? 'Giriş yaparak istatistikleri görüntüleyin'
+                    : 'Oyuncunun detaylı istatistiklerini görüntüle',
+                style: TextStyle(
+                  color: _isGuestUser
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5)
+                      : null,
+                ),
+              ),
+              onTap: _isGuestUser
+                  ? () {
+                      Navigator.pop(context);
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Giriş Gerekli'),
+                          content: const Text(
+                            'İstatistikleri görüntülemek için giriş yapmanız gerekiyor',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('İptal'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                print(
+                                    'DEBUG: İstatistik Giriş Yap butonuna tıklandı');
+                                Navigator.pop(context);
+                                Navigator.pushReplacementNamed(
+                                    context, AppRouter.login,
+                                    arguments: true);
+                              },
+                              child: const Text('Giriş Yap'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  : () {
+                      Navigator.pop(context);
+                      Future.microtask(() {
+                        _showPlayerStatistics(parentContext, playerName);
+                      });
+                    },
             ),
             ListTile(
               leading: Icon(
                 Icons.history,
-                color: Theme.of(context).colorScheme.primary,
+                color: _isGuestUser
+                    ? Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withOpacity(0.5)
+                    : Theme.of(context).colorScheme.primary,
               ),
-              title: const Text('Maç Geçmişi'),
-              subtitle:
-                  const Text('İkinci oyuncu seçerek maç geçmişini görüntüle'),
-              onTap: () {
-                Navigator.pop(context);
-                Future.microtask(() {
-                  _showMatchHistoryDialog(parentContext, playerName);
-                });
-              },
+              title: Text(
+                'Maç Geçmişi',
+                style: TextStyle(
+                  color: _isGuestUser
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5)
+                      : null,
+                ),
+              ),
+              subtitle: Text(
+                _isGuestUser
+                    ? 'Giriş yaparak maç geçmişini görüntüleyin'
+                    : 'İkinci oyuncu seçerek maç geçmişini görüntüle',
+                style: TextStyle(
+                  color: _isGuestUser
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5)
+                      : null,
+                ),
+              ),
+              onTap: _isGuestUser
+                  ? () {
+                      Navigator.pop(context);
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Giriş Gerekli'),
+                          content: const Text(
+                            'Maç geçmişini görüntülemek için giriş yapmanız gerekiyor',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('İptal'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                print(
+                                    'DEBUG: Maç Geçmişi Giriş Yap butonuna tıklandı');
+                                Navigator.pop(context);
+                                Navigator.pushReplacementNamed(
+                                    context, AppRouter.login,
+                                    arguments: true);
+                              },
+                              child: const Text('Giriş Yap'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  : () {
+                      Navigator.pop(context);
+                      Future.microtask(() {
+                        _showMatchHistoryDialog(parentContext, playerName);
+                      });
+                    },
             ),
             ListTile(
               leading: Icon(

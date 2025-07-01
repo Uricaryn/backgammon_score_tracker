@@ -13,10 +13,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/rendering.dart';
 import 'package:backgammon_score_tracker/presentation/screens/profile_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,11 +33,14 @@ class _HomeScreenState extends State<HomeScreen>
   final screenshotController = ScreenshotController();
   final _mainScrollController = ScrollController();
   final _gameListScrollController = ScrollController();
+  final _firebaseService = FirebaseService();
+  final _guestDataService = GuestDataService();
   bool _isLoading = false;
   Map<String, dynamic>? _cachedGameData;
   DateTime? _lastRefresh;
   StreamSubscription<QuerySnapshot>? _gameStreamSubscription;
   bool _isInitialized = false;
+  bool _isGuestUser = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -44,9 +50,73 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     if (!_isInitialized) {
       _mainScrollController.addListener(_scrollListener);
+      _checkUserType();
       _initializeGameStream();
       _isInitialized = true;
+
+      // Misafir verilerinin aktarılıp aktarılmadığını kontrol et
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkGuestDataMigration();
+      });
     }
+  }
+
+  void _checkUserType() {
+    _isGuestUser = _firebaseService.isCurrentUserGuest();
+  }
+
+  // Misafir verilerinin aktarılıp aktarılmadığını kontrol et
+  Future<void> _checkGuestDataMigration() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && !user.isAnonymous) {
+        // Kullanıcı giriş yapmış ve misafir değil
+        final isMigrated = await _guestDataService.isGuestDataMigrated();
+        final hasShownMigration =
+            await _guestDataService.hasShownMigrationDialog();
+
+        if (isMigrated && !hasShownMigration) {
+          // Misafir verileri aktarılmışsa ve dialog henüz gösterilmemişse kullanıcıya bildir
+          if (mounted) {
+            _showMigrationDialog();
+            // Dialog gösterildi olarak işaretle
+            await _guestDataService.markMigrationDialogShown();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Migration check error: $e');
+    }
+  }
+
+  // Misafir verilerinin aktarıldığını gösteren dialog
+  void _showMigrationDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cloud_upload, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Veriler Aktarıldı'),
+            ],
+          ),
+          content: const Text(
+            'Misafir olarak kaydettiğiniz oyunlar ve oyuncular başarıyla hesabınıza aktarıldı. '
+            'Artık tüm özelliklere erişebilir ve verilerinizi güvenle saklayabilirsiniz.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Tamam'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -71,6 +141,12 @@ class _HomeScreenState extends State<HomeScreen>
   void _initializeGameStream() {
     // Önce mevcut stream'i iptal et
     _gameStreamSubscription?.cancel();
+
+    if (_isGuestUser) {
+      // Misafir kullanıcılar için yerel veri yükle
+      _loadGuestGames();
+      return;
+    }
 
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -105,6 +181,24 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  // Misafir kullanıcılar için yerel oyunları yükle
+  Future<void> _loadGuestGames() async {
+    try {
+      final games = await _guestDataService.getGuestGames();
+      if (mounted) {
+        setState(() {
+          _cachedGameData = {
+            'timestamp': DateTime.now(),
+            'data': games,
+          };
+          _lastRefresh = DateTime.now();
+        });
+      }
+    } catch (e) {
+      debugPrint('Guest Games Load Error: $e');
+    }
+  }
+
   Future<void> _loadInitialData() async {
     if (_lastRefresh != null &&
         DateTime.now().difference(_lastRefresh!) < const Duration(seconds: 5)) {
@@ -115,28 +209,32 @@ class _HomeScreenState extends State<HomeScreen>
 
     setState(() => _isLoading = true);
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      if (_isGuestUser) {
+        await _loadGuestGames();
+      } else {
+        final userId = FirebaseAuth.instance.currentUser?.uid;
+        if (userId == null) return;
 
-      final snapshot = await FirebaseFirestore.instance
-          .collection('games')
-          .where('userId', isEqualTo: userId)
-          .orderBy('timestamp', descending: true)
-          .get();
+        final snapshot = await FirebaseFirestore.instance
+            .collection('games')
+            .where('userId', isEqualTo: userId)
+            .orderBy('timestamp', descending: true)
+            .get();
 
-      if (mounted) {
-        setState(() {
-          _cachedGameData = {
-            'timestamp': DateTime.now(),
-            'data': snapshot.docs
-                .map((doc) => {
-                      ...doc.data(),
-                      'id': doc.id,
-                    })
-                .toList(),
-          };
-          _lastRefresh = DateTime.now();
-        });
+        if (mounted) {
+          setState(() {
+            _cachedGameData = {
+              'timestamp': DateTime.now(),
+              'data': snapshot.docs
+                  .map((doc) => {
+                        ...doc.data(),
+                        'id': doc.id,
+                      })
+                  .toList(),
+            };
+            _lastRefresh = DateTime.now();
+          });
+        }
       }
     } catch (e) {
       debugPrint('Error loading initial data: $e');
@@ -164,8 +262,18 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _deleteGame(String gameId) async {
     try {
       setState(() => _isLoading = true);
-      await FirebaseFirestore.instance.collection('games').doc(gameId).delete();
-      await _loadInitialData();
+
+      if (_isGuestUser) {
+        await _guestDataService.deleteGuestGame(gameId);
+        await _loadGuestGames();
+      } else {
+        await FirebaseFirestore.instance
+            .collection('games')
+            .doc(gameId)
+            .delete();
+        await _loadInitialData();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Maç başarıyla silindi')),
@@ -216,14 +324,27 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildGameList() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return const SizedBox.shrink();
-
     if (_cachedGameData != null) {
       final games = _cachedGameData!['data'] as List<Map<String, dynamic>>;
       if (games.isEmpty) {
-        return const Center(
-          child: Text('Henüz maç kaydı yok'),
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Henüz maç kaydı yok'),
+              if (_isGuestUser) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Misafir kullanıcı olarak verileriniz yerel olarak saklanıyor',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
+          ),
         );
       }
 
@@ -237,7 +358,9 @@ class _HomeScreenState extends State<HomeScreen>
           final player2 = data['player2'] as String;
           final player1Score = data['player1Score'] as int;
           final player2Score = data['player2Score'] as int;
-          final timestamp = (data['timestamp'] as Timestamp).toDate();
+          final timestamp = data['timestamp'] is Timestamp
+              ? (data['timestamp'] as Timestamp).toDate()
+              : DateTime.parse(data['timestamp'] as String);
 
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
@@ -371,14 +494,27 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildScoreboard() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return const SizedBox.shrink();
-
     if (_cachedGameData != null) {
       final games = _cachedGameData!['data'] as List<Map<String, dynamic>>;
       if (games.isEmpty) {
-        return const Center(
-          child: Text('Henüz maç kaydı bulunmuyor'),
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Henüz maç kaydı bulunmuyor'),
+              if (_isGuestUser) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Misafir kullanıcı olarak verileriniz yerel olarak saklanıyor',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
+          ),
         );
       }
 
@@ -416,14 +552,45 @@ class _HomeScreenState extends State<HomeScreen>
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: InkWell(
-                onTap: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => PlayerStatsDialog(
-                      playerName: sortedPlayers[i].key,
-                    ),
-                  );
-                },
+                onTap: _isGuestUser
+                    ? () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Giriş Gerekli'),
+                            content: const Text(
+                              'İstatistikleri görüntülemek için giriş yapmanız gerekiyor',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('İptal'),
+                              ),
+                              FilledButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const LoginScreen(showSignUp: true),
+                                    ),
+                                  );
+                                },
+                                child: const Text('Giriş Yap'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    : () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => PlayerStatsDialog(
+                            playerName: sortedPlayers[i].key,
+                          ),
+                        );
+                      },
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -563,28 +730,30 @@ class _HomeScreenState extends State<HomeScreen>
       appBar: AppBar(
         title: const Text('Tavla Skor Takip'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationsScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ProfileScreen(),
-                ),
-              );
-            },
-          ),
+          if (!_isGuestUser) ...[
+            IconButton(
+              icon: const Icon(Icons.notifications),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotificationsScreen(),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.person),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProfileScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _signOut,

@@ -353,18 +353,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     Color iconColor;
 
     switch (type) {
-      case NotificationType.newGame:
-        iconData = Icons.sports_esports;
-        iconColor = Colors.green;
-        break;
-      case NotificationType.statistics:
-        iconData = Icons.analytics;
-        iconColor = Colors.blue;
-        break;
-      case NotificationType.reminder:
-        iconData = Icons.schedule;
-        iconColor = Colors.orange;
-        break;
       case NotificationType.social:
         iconData = Icons.people;
         iconColor = Colors.purple;
@@ -415,19 +403,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
     // Bildirim türüne göre yönlendirme
     switch (notification.type) {
-      case NotificationType.newGame:
+      case NotificationType.social:
         // Ana sayfaya git
         Navigator.pop(context);
-        break;
-      case NotificationType.statistics:
-        // İstatistik sayfasına git
-        Navigator.pop(context);
-        // TODO: Navigate to statistics screen
-        break;
-      case NotificationType.reminder:
-        // Yeni oyun sayfasına git
-        Navigator.pop(context);
-        // TODO: Navigate to new game screen
         break;
       default:
         break;
@@ -541,27 +519,15 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                     },
                   ),
                   SwitchListTile(
-                    title: const Text('Yeni Maç'),
-                    subtitle: const Text('Yeni maç kaydedildiğinde bildirim'),
-                    value: provider.preferences.newGameNotifications,
-                    onChanged: (value) {
-                      provider.toggleNotificationType('newGame');
-                    },
-                  ),
-                  SwitchListTile(
-                    title: const Text('İstatistikler'),
-                    subtitle: const Text('İstatistik güncellemeleri'),
-                    value: provider.preferences.statisticsNotifications,
-                    onChanged: (value) {
-                      provider.toggleNotificationType('statistics');
-                    },
-                  ),
-                  SwitchListTile(
-                    title: const Text('Hatırlatıcılar'),
-                    subtitle: const Text('Oyun hatırlatıcı bildirimleri'),
-                    value: provider.preferences.reminderNotifications,
-                    onChanged: (value) {
-                      provider.toggleNotificationType('reminder');
+                    title: const Text('Sosyal Bildirimler'),
+                    subtitle: const Text('Günlük tavla hatırlatıcıları'),
+                    value: provider.preferences.socialNotifications,
+                    onChanged: (value) async {
+                      if (value) {
+                        await provider.startSocialNotifications();
+                      } else {
+                        await provider.stopSocialNotifications();
+                      }
                     },
                   ),
                 ],

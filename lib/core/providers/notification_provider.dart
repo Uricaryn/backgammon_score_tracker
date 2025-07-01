@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 
 class NotificationProvider extends ChangeNotifier {
   final FirebaseService _firebaseService = FirebaseService();
+  final NotificationService _notificationService = NotificationService();
 
   List<NotificationModel> _notifications = [];
   NotificationPreferences _preferences = NotificationPreferences();
@@ -127,16 +129,11 @@ class NotificationProvider extends ChangeNotifier {
     switch (type) {
       case 'enabled':
         newPreferences = _preferences.copyWith(enabled: !_preferences.enabled);
-        break;
-      case 'social':
-        newPreferences = _preferences.copyWith(
-            socialNotifications: !_preferences.socialNotifications);
+        await updatePreferences(newPreferences);
         break;
       default:
         return;
     }
-
-    await updatePreferences(newPreferences);
   }
 
   // Bildirimleri filtrele
@@ -153,6 +150,39 @@ class NotificationProvider extends ChangeNotifier {
   // Okunmuş bildirimleri getir
   List<NotificationModel> get readNotifications {
     return _notifications.where((n) => n.isRead).toList();
+  }
+
+  // Sosyal bildirimleri başlat
+  Future<void> startSocialNotifications() async {
+    try {
+      await _notificationService.setupSocialNotifications();
+      // Tercihleri güncelle
+      final newPreferences = _preferences.copyWith(socialNotifications: true);
+      await updatePreferences(newPreferences);
+    } catch (e) {
+      _setError('Sosyal bildirimler başlatılamadı');
+    }
+  }
+
+  // Sosyal bildirimleri durdur
+  Future<void> stopSocialNotifications() async {
+    try {
+      await _notificationService.stopSocialNotifications();
+      // Tercihleri güncelle
+      final newPreferences = _preferences.copyWith(socialNotifications: false);
+      await updatePreferences(newPreferences);
+    } catch (e) {
+      _setError('Sosyal bildirimler durdurulamadı');
+    }
+  }
+
+  // Sosyal bildirim durumunu kontrol et
+  Future<bool> checkSocialNotificationsStatus() async {
+    try {
+      return await _notificationService.areSocialNotificationsActive();
+    } catch (e) {
+      return false;
+    }
   }
 
   // Private helper methods

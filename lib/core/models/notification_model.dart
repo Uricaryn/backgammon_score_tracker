@@ -72,26 +72,17 @@ class NotificationModel {
 }
 
 enum NotificationType {
-  newGame,
-  statistics,
-  reminder,
   social,
   general,
 }
 
 class NotificationPreferences {
   final bool enabled;
-  final bool newGameNotifications;
-  final bool statisticsNotifications;
-  final bool reminderNotifications;
   final bool socialNotifications;
   final String? fcmToken;
 
   NotificationPreferences({
     this.enabled = true,
-    this.newGameNotifications = true,
-    this.statisticsNotifications = true,
-    this.reminderNotifications = true,
     this.socialNotifications = true,
     this.fcmToken,
   });
@@ -99,9 +90,6 @@ class NotificationPreferences {
   factory NotificationPreferences.fromMap(Map<String, dynamic> map) {
     return NotificationPreferences(
       enabled: map['enabled'] ?? true,
-      newGameNotifications: map['newGameNotifications'] ?? true,
-      statisticsNotifications: map['statisticsNotifications'] ?? true,
-      reminderNotifications: map['reminderNotifications'] ?? true,
       socialNotifications: map['socialNotifications'] ?? true,
       fcmToken: map['fcmToken'],
     );
@@ -110,9 +98,6 @@ class NotificationPreferences {
   Map<String, dynamic> toMap() {
     return {
       'enabled': enabled,
-      'newGameNotifications': newGameNotifications,
-      'statisticsNotifications': statisticsNotifications,
-      'reminderNotifications': reminderNotifications,
       'socialNotifications': socialNotifications,
       'fcmToken': fcmToken,
     };
@@ -120,19 +105,11 @@ class NotificationPreferences {
 
   NotificationPreferences copyWith({
     bool? enabled,
-    bool? newGameNotifications,
-    bool? statisticsNotifications,
-    bool? reminderNotifications,
     bool? socialNotifications,
     String? fcmToken,
   }) {
     return NotificationPreferences(
       enabled: enabled ?? this.enabled,
-      newGameNotifications: newGameNotifications ?? this.newGameNotifications,
-      statisticsNotifications:
-          statisticsNotifications ?? this.statisticsNotifications,
-      reminderNotifications:
-          reminderNotifications ?? this.reminderNotifications,
       socialNotifications: socialNotifications ?? this.socialNotifications,
       fcmToken: fcmToken ?? this.fcmToken,
     );
