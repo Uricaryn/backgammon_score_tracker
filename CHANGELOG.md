@@ -12,12 +12,18 @@
 - **Kullanıcı Deneyimi**: Daha tutarlı dialog'lar ve bildirim uyarıları
 - **Giriş/Kayıt Akışı**: Google ile kayıt ol butonu sadece kayıt modunda görünür
 - **Bildirim Ayarları**: Sadeleştirilmiş ayarlar (sosyal bildirimler ve genel)
+- **Veri Saklama**: Anonymous kullanıcı verileri tamamen lokalde tutuluyor
 
 ### 🐛 Düzeltmeler
 - Misafir kullanıcılarda oyuncu ekleme sorunları
 - Bildirim servisi hataları
 - Firebase Messaging entegrasyon sorunları
 - Giriş yapma butonlarının çalışmaması
+- Google ile giriş yapıldıktan sonra misafir girişi sorunu
+- Oyuncu silindiğinde ilişkili maçların da silinmesi
+- Keystore bilgilerinin terminalde görünmesi güvenlik sorunu
+- Anonymous kullanıcıdan kayıtlı kullanıcıya geçişte veri aktarımı sorunu
+- Anonymous kullanıcı verilerinin kayıt sonrası Firestore'a aktarılması
 
 ### 🔒 Güvenlik
 - Misafir kullanıcılar için istatistik sayfalarına erişim kısıtlaması

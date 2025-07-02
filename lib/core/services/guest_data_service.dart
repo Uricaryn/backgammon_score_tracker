@@ -151,6 +151,24 @@ class GuestDataService {
     }
   }
 
+  // Misafir oyuncuya ait tüm oyunları sil
+  Future<void> deleteGuestGamesByPlayerName(String playerName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final gamesJson = prefs.getString(_guestGamesKey) ?? '[]';
+      final games = List<Map<String, dynamic>>.from(jsonDecode(gamesJson));
+      games.removeWhere((game) =>
+          game['player1'] == playerName || game['player2'] == playerName);
+      await prefs.setString(_guestGamesKey, jsonEncode(games));
+      _logService.info('Misafir oyuncuya ait tüm oyunlar silindi: $playerName',
+          tag: 'GuestData');
+    } catch (e) {
+      _logService.error('Misafir oyuncuya ait oyunlar silinemedi',
+          tag: 'GuestData', error: e);
+      throw Exception('Misafir oyuncuya ait oyunlar silinemedi');
+    }
+  }
+
   // Misafir verileri Firebase'e aktar
   Future<void> migrateGuestDataToFirebase() async {
     try {

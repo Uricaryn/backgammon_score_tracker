@@ -295,6 +295,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
 
   Future<void> _showQuickAddPlayerDialog() async {
     final TextEditingController nameController = TextEditingController();
+    final ValueNotifier<String?> errorText = ValueNotifier<String?>(null);
 
     return showDialog(
       context: context,
@@ -303,17 +304,28 @@ class _NewGameScreenState extends State<NewGameScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Oyuncu Adı',
-                border: OutlineInputBorder(),
-              ),
-              autofocus: true,
-              onSubmitted: (value) async {
-                if (value.trim().isNotEmpty) {
-                  await _addPlayer(value.trim());
-                }
+            ValueListenableBuilder<String?>(
+              valueListenable: errorText,
+              builder: (context, error, child) {
+                return TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Oyuncu Adı',
+                    border: const OutlineInputBorder(),
+                    errorText: error,
+                  ),
+                  autofocus: true,
+                  onSubmitted: (value) async {
+                    final validation =
+                        ValidationService.validatePlayerName(value.trim());
+                    if (validation != null) {
+                      errorText.value = validation;
+                      return;
+                    }
+                    errorText.value = null;
+                    await _addPlayer(value.trim());
+                  },
+                );
               },
             ),
             if (_isGuestUser) ...[
@@ -337,9 +349,13 @@ class _NewGameScreenState extends State<NewGameScreen> {
           FilledButton(
             onPressed: () async {
               final name = nameController.text.trim();
-              if (name.isNotEmpty) {
-                await _addPlayer(name);
+              final validation = ValidationService.validatePlayerName(name);
+              if (validation != null) {
+                errorText.value = validation;
+                return;
               }
+              errorText.value = null;
+              await _addPlayer(name);
             },
             child: const Text('Ekle'),
           ),

@@ -13,9 +13,6 @@ plugins {
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-    println("key.properties dosyası okundu: ${keystoreProperties}")
-} else {
-    println("key.properties dosyası bulunamadı: ${keystorePropertiesFile.absolutePath}")
 }
 
 android {
@@ -38,8 +35,8 @@ android {
         applicationId = "com.uricaryn.backgammon_score_tracker"
         minSdk = 23
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.3.1-beta"
+        versionCode = 7
+        versionName = "1.3.2-beta"
     }
 
     signingConfigs {
@@ -49,10 +46,7 @@ android {
             val keyAlias = keystoreProperties["keyAlias"] as String?
             val keyPassword = keystoreProperties["keyPassword"] as String?
             
-            println("Keystore yolu: $storeFilePath")
-            println("Store password: ${storePassword?.take(3)}***")
-            println("Key alias: $keyAlias")
-            println("Key password: ${keyPassword?.take(3)}***")
+
             
             storeFile = file(storeFilePath)
             this.storePassword = storePassword

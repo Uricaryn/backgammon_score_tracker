@@ -124,13 +124,50 @@ class _PlayersScreenState extends State<PlayersScreen> {
 
   Future<void> _deletePlayer(String playerId) async {
     try {
+      String? deletedPlayerName;
       if (_isGuestUser) {
+        // Misafir kullanıcıda oyuncu adı id ile eşleşiyor mu kontrol et
+        final guestPlayers = await _guestDataService.getGuestPlayers();
+        final player = guestPlayers.firstWhere((p) => p['id'] == playerId,
+            orElse: () => {});
+        deletedPlayerName = player['name'] as String?;
         await _guestDataService.deleteGuestPlayer(playerId);
+        if (deletedPlayerName != null) {
+          await _guestDataService
+              .deleteGuestGamesByPlayerName(deletedPlayerName);
+        }
       } else {
+        // Önce oyuncunun adını al
+        final playerDoc = await FirebaseFirestore.instance
+            .collection('players')
+            .doc(playerId)
+            .get();
+        deletedPlayerName = playerDoc.data()?['name'] as String?;
         await FirebaseFirestore.instance
             .collection('players')
             .doc(playerId)
             .delete();
+        // Oyuncunun adıyla ilişkili tüm maçları sil
+        if (deletedPlayerName != null) {
+          final gamesQuery = await FirebaseFirestore.instance
+              .collection('games')
+              .where('userId',
+                  isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+              .where('player1', isEqualTo: deletedPlayerName)
+              .get();
+          for (final doc in gamesQuery.docs) {
+            await doc.reference.delete();
+          }
+          final gamesQuery2 = await FirebaseFirestore.instance
+              .collection('games')
+              .where('userId',
+                  isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+              .where('player2', isEqualTo: deletedPlayerName)
+              .get();
+          for (final doc in gamesQuery2.docs) {
+            await doc.reference.delete();
+          }
+        }
       }
 
       if (mounted) {
@@ -138,8 +175,9 @@ class _PlayersScreenState extends State<PlayersScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isGuestUser
-                ? 'Oyuncu yerel olarak silindi'
-                : ErrorService.successPlayerDeleted),
+                ? 'Oyuncu ve ilişkili maçlar yerel olarak silindi'
+                : ErrorService.successPlayerDeleted +
+                    ' (İlişkili maçlar da silindi)'),
           ),
         );
       }

@@ -117,18 +117,33 @@ class FirebaseService {
 
   Future<UserCredential> signUp(String email, String password) async {
     try {
-      final userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final currentUser = _auth.currentUser;
+      UserCredential userCredential;
+      bool wasAnonymous = false;
+      if (currentUser != null && currentUser.isAnonymous) {
+        // Anonymous kullanıcıyı e-posta/şifre ile linkle
+        wasAnonymous = true;
+        final credential =
+            EmailAuthProvider.credential(email: email, password: password);
+        userCredential = await currentUser.linkWithCredential(credential);
+      } else {
+        userCredential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      }
 
       if (userCredential.user == null) {
         throw Exception(ErrorService.authFailed);
       }
 
       await userCredential.user!.sendEmailVerification();
-
       await createUserDocument(userCredential.user!);
+
+      // Eğer anonymous kullanıcıdan geçiş yapıldıysa veri aktarımı yap
+      if (wasAnonymous) {
+        await _migrateAnonymousDataToFirebase();
+      }
 
       return userCredential;
     } on FirebaseAuthException catch (e) {
@@ -198,6 +213,12 @@ class FirebaseService {
         throw Exception(ErrorService.authUserNotFound);
       }
 
+      // Anonymous kullanıcılar için GuestDataService kullan
+      if (user.isAnonymous) {
+        await _guestDataService.saveGuestPlayer(name);
+        return;
+      }
+
       // Ensure user document exists
       await _ensureUserDocument(user.uid, user.email ?? '');
 
@@ -243,6 +264,17 @@ class FirebaseService {
           'Oyun kaydediliyor: $player1 vs $player2 ($player1Score-$player2Score)',
           tag: 'Game');
 
+      // Anonymous kullanıcılar için GuestDataService kullan
+      if (user.isAnonymous) {
+        await _guestDataService.saveGuestGame(
+          player1: player1,
+          player2: player2,
+          player1Score: player1Score,
+          player2Score: player2Score,
+        );
+        return;
+      }
+
       // Ensure user document exists
       await _ensureUserDocument(user.uid, user.email ?? '');
 
@@ -280,6 +312,13 @@ class FirebaseService {
 
   Stream<QuerySnapshot> getGames() {
     try {
+      final user = _auth.currentUser;
+      if (user?.isAnonymous == true) {
+        // Anonymous kullanıcılar için boş stream döndür
+        // Çünkü GuestDataService'den veri çekilecek
+        return Stream.empty();
+      }
+
       return _firestore
           .collection('games')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
@@ -287,6 +326,25 @@ class FirebaseService {
           .snapshots();
     } catch (e) {
       throw Exception('Oyunlar getirilirken bir hata oluştu: $e');
+    }
+  }
+
+  Stream<QuerySnapshot> getPlayers() {
+    try {
+      final user = _auth.currentUser;
+      if (user?.isAnonymous == true) {
+        // Anonymous kullanıcılar için boş stream döndür
+        // Çünkü GuestDataService'den veri çekilecek
+        return Stream.empty();
+      }
+
+      return _firestore
+          .collection('players')
+          .where('userId', isEqualTo: _auth.currentUser?.uid)
+          .orderBy('createdAt', descending: true)
+          .snapshots();
+    } catch (e) {
+      throw Exception('Oyuncular getirilirken bir hata oluştu: $e');
     }
   }
 
@@ -447,6 +505,9 @@ class FirebaseService {
     try {
       _logService.info('Misafir kullanıcı girişi başlatıldı', tag: 'Auth');
 
+      // Önce Google Sign-In'i temizle ki misafir girişi temiz olsun
+      await _googleSignIn.signOut();
+
       // Firebase Auth durumunu kontrol et
       final currentUser = _auth.currentUser;
       _logService.info('Mevcut kullanıcı: ${currentUser?.uid ?? 'Yok'}',
@@ -459,18 +520,9 @@ class FirebaseService {
       if (userCredential.user != null) {
         _logService.info('Kullanıcı oluşturuldu: ${userCredential.user!.uid}',
             tag: 'Auth');
-
-        try {
-          // Misafir kullanıcı dokümanı oluştur
-          await createGuestUserDocument(userCredential.user!);
-          _logService.info(
-              'Misafir kullanıcı girişi başarılı: ${userCredential.user!.uid}',
-              tag: 'Auth');
-        } catch (e) {
-          _logService.warning('Misafir kullanıcı dokümanı oluşturulamadı: $e',
-              tag: 'Auth');
-          // Devam et, doküman oluşturulamasa bile
-        }
+        _logService.info(
+            'Misafir kullanıcı girişi başarılı: ${userCredential.user!.uid}',
+            tag: 'Auth');
       } else {
         _logService.error('Kullanıcı oluşturulamadı', tag: 'Auth');
         throw Exception('Kullanıcı oluşturulamadı');
@@ -506,71 +558,40 @@ class FirebaseService {
     }
   }
 
-  // Misafir kullanıcı dokümanı oluştur
-  Future<void> createGuestUserDocument(User user) async {
-    try {
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        await _firestore.collection('users').doc(user.uid).set({
-          'isGuest': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLogin': FieldValue.serverTimestamp(),
-          'isEmailVerified': false,
-          'themeMode': 'system',
-          // Bildirim tercihleri - misafir kullanıcılar için kapalı
-          'notificationEnabled': false,
-          'newGameNotifications': false,
-          'statisticsNotifications': false,
-          'reminderNotifications': false,
-          'socialNotifications': false,
-        });
-      }
-    } catch (e) {
-      throw Exception(ErrorService.firestorePermissionDenied);
-    }
-  }
-
-  // Kullanıcının misafir olup olmadığını kontrol et
-  bool isGuestUser(User? user) {
-    return user?.isAnonymous ?? false;
-  }
-
-  // Kullanıcının misafir olup olmadığını kontrol et (mevcut kullanıcı için)
-  bool isCurrentUserGuest() {
-    final user = _auth.currentUser;
-    return isGuestUser(user);
-  }
-
   // Google Sign-In methods
   Future<UserCredential?> signInWithGoogle() async {
     try {
       _logService.info('Attempting Google sign in', tag: 'Auth');
-
-      // Trigger the authentication flow
+      await _googleSignIn.signOut();
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
       if (googleUser == null) {
         _logService.info('Google sign in cancelled by user', tag: 'Auth');
         return null;
       }
-
-      // Obtain the auth details from the request
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
-
-      // Create a new credential
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-
-      // Sign in to Firebase with the Google credential
-      final userCredential = await _auth.signInWithCredential(credential);
+      final currentUser = _auth.currentUser;
+      UserCredential userCredential;
+      bool wasAnonymous = false;
+      if (currentUser != null && currentUser.isAnonymous) {
+        // Anonymous kullanıcıyı Google hesabı ile linkle
+        wasAnonymous = true;
+        userCredential = await currentUser.linkWithCredential(credential);
+      } else {
+        userCredential = await _auth.signInWithCredential(credential);
+      }
       _logService.info('Google sign in successful: ${userCredential.user?.uid}',
           tag: 'Auth');
-
-      // Create or update user document
       await createOrUpdateUserDocument(userCredential.user!);
+
+      // Eğer anonymous kullanıcıdan geçiş yapıldıysa veri aktarımı yap
+      if (wasAnonymous) {
+        await _migrateAnonymousDataToFirebase();
+      }
 
       return userCredential;
     } catch (e) {
@@ -603,9 +624,6 @@ class FirebaseService {
 
         // Initialize notification services
         await _initializeNotificationServices();
-
-        // Misafir verileri varsa Firebase'e aktar
-        await _migrateGuestDataIfExists();
       } else {
         // Existing user - update last login
         await _firestore.collection('users').doc(user.uid).update({
@@ -637,5 +655,43 @@ class FirebaseService {
           tag: 'Auth', error: e);
       // Misafir veriler aktarılamasa bile uygulama çalışmaya devam etsin
     }
+  }
+
+  // Anonymous kullanıcı verilerini Firebase'e aktar
+  Future<void> _migrateAnonymousDataToFirebase() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('Kullanıcı oturumu bulunamadı');
+      }
+
+      final hasGuestData = await _guestDataService.hasGuestData();
+      final isAlreadyMigrated = await _guestDataService.isGuestDataMigrated();
+
+      if (hasGuestData && !isAlreadyMigrated) {
+        _logService.info(
+            'Anonymous kullanıcı verileri bulundu, Firebase\'e aktarılıyor...',
+            tag: 'Auth');
+        await _guestDataService.migrateGuestDataToFirebase();
+        _logService.info(
+            'Anonymous kullanıcı verileri başarıyla Firebase\'e aktarıldı',
+            tag: 'Auth');
+      }
+    } catch (e) {
+      _logService.error('Anonymous kullanıcı verileri aktarılamadı: $e',
+          tag: 'Auth', error: e);
+      // Veriler aktarılamasa bile uygulama çalışmaya devam etsin
+    }
+  }
+
+  // Kullanıcının misafir olup olmadığını kontrol et
+  bool isGuestUser(User? user) {
+    return user?.isAnonymous ?? false;
+  }
+
+  // Kullanıcının misafir olup olmadığını kontrol et (mevcut kullanıcı için)
+  bool isCurrentUserGuest() {
+    final user = _auth.currentUser;
+    return isGuestUser(user);
   }
 }

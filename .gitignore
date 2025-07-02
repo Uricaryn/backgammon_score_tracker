@@ -47,6 +47,7 @@ app.*.map.json
 # Keystore and signing config - HASSAS BİLGİLER
 android/app/*.jks
 android/app/*.keystore
+android/app/key.properties
 key.properties
 *.keystore
 *.jks

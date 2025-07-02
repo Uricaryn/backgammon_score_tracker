@@ -166,6 +166,17 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
+      // Kullanıcıya bilgilendirici mesaj göster
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Misafir girişi hazırlanıyor...'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+
       await _firebaseService.signInAnonymously();
 
       // Session'ı başlat
@@ -200,6 +211,17 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
+      // Kullanıcıya bilgilendirici mesaj göster
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Google hesap seçimi açılıyor...'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+
       final userCredential = await _firebaseService.signInWithGoogle();
 
       if (userCredential != null) {
