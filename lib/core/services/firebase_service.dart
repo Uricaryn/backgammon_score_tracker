@@ -120,13 +120,32 @@ class FirebaseService {
       final currentUser = _auth.currentUser;
       UserCredential userCredential;
       bool wasAnonymous = false;
+
+      _logService.info(
+          'SignUp başlatıldı. Mevcut kullanıcı: ${currentUser?.uid ?? 'Yok'}',
+          tag: 'Auth');
+      _logService.info(
+          'Kullanıcı anonymous mu: ${currentUser?.isAnonymous ?? false}',
+          tag: 'Auth');
+
       if (currentUser != null && currentUser.isAnonymous) {
         // Anonymous kullanıcıyı e-posta/şifre ile linkle
         wasAnonymous = true;
+        _logService.info(
+            'Anonymous kullanıcı tespit edildi, credential ile linkleme yapılacak',
+            tag: 'Auth');
+
+        // Önce misafir verisi var mı kontrol et
+        final hasGuestData = await _guestDataService.hasGuestData();
+        _logService.info('Misafir verisi var mı: $hasGuestData', tag: 'Auth');
+
         final credential =
             EmailAuthProvider.credential(email: email, password: password);
         userCredential = await currentUser.linkWithCredential(credential);
+        _logService.info('Anonymous kullanıcı credential ile linklendi',
+            tag: 'Auth');
       } else {
+        _logService.info('Yeni kullanıcı oluşturulacak', tag: 'Auth');
         userCredential = await _auth.createUserWithEmailAndPassword(
           email: email,
           password: password,
@@ -137,12 +156,24 @@ class FirebaseService {
         throw Exception(ErrorService.authFailed);
       }
 
+      _logService.info('Kullanıcı oluşturuldu: ${userCredential.user!.uid}',
+          tag: 'Auth');
+      _logService.info('wasAnonymous değeri: $wasAnonymous', tag: 'Auth');
+
       await userCredential.user!.sendEmailVerification();
       await createUserDocument(userCredential.user!);
 
       // Eğer anonymous kullanıcıdan geçiş yapıldıysa veri aktarımı yap
       if (wasAnonymous) {
+        _logService.info(
+            'Anonymous kullanıcıdan geçiş tespit edildi, veri aktarımı başlatılıyor...',
+            tag: 'Auth');
         await _migrateAnonymousDataToFirebase();
+        _logService.info('Veri aktarımı tamamlandı', tag: 'Auth');
+      } else {
+        _logService.info(
+            'Anonymous kullanıcıdan geçiş değil, veri aktarımı yapılmayacak',
+            tag: 'Auth');
       }
 
       return userCredential;
@@ -164,8 +195,11 @@ class FirebaseService {
         default:
           errorMessage = ErrorService.authFailed;
       }
+      _logService.error('SignUp FirebaseAuthException: ${e.code}',
+          tag: 'Auth', error: e);
       throw Exception(errorMessage);
     } catch (e) {
+      _logService.error('SignUp genel hata', tag: 'Auth', error: e);
       throw Exception(ErrorService.generalError);
     }
   }
@@ -558,10 +592,62 @@ class FirebaseService {
     }
   }
 
+  // Google ile yeni kullanıcı kaydı
+  Future<UserCredential?> signUpWithGoogle() async {
+    try {
+      _logService.info('Google Sign-Up başlatıldı', tag: 'Auth');
+      await _googleSignIn.signOut();
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        _logService.info('Google sign up cancelled by user', tag: 'Auth');
+        return null;
+      }
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user == null) {
+        throw Exception('Google hesabı ile kayıt başarısız.');
+      }
+      // Firestore'da kullanıcı dokümanı var mı kontrol et
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        await _auth.signOut();
+        throw Exception(
+            'Bu Google hesabı ile zaten kayıt yapılmış. Lütfen giriş yapın.');
+      }
+      // Yeni kullanıcı dokümanı oluştur
+      await _firestore.collection('users').doc(user.uid).set({
+        'email': user.email,
+        'displayName': user.displayName,
+        'photoURL': user.photoURL,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastLogin': FieldValue.serverTimestamp(),
+        'isEmailVerified': user.emailVerified,
+        'isGuest': false,
+        'themeMode': 'system',
+        'notificationEnabled': true,
+        'newGameNotifications': false,
+        'statisticsNotifications': false,
+        'reminderNotifications': false,
+        'socialNotifications': true,
+      });
+      await _initializeNotificationServices();
+      return userCredential;
+    } catch (e) {
+      _logService.error('Google sign up failed: \\${e}', tag: 'Auth', error: e);
+      throw Exception('Google sign up failed: \\${e.toString()}');
+    }
+  }
+
   // Google Sign-In methods
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      _logService.info('Attempting Google sign in', tag: 'Auth');
+      _logService.info('Google Sign-In başlatıldı', tag: 'Auth');
       await _googleSignIn.signOut();
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
@@ -577,63 +663,59 @@ class FirebaseService {
       final currentUser = _auth.currentUser;
       UserCredential userCredential;
       bool wasAnonymous = false;
+
+      _logService.info('Mevcut kullanıcı: \\${currentUser?.uid ?? 'Yok'}',
+          tag: 'Auth');
+      _logService.info(
+          'Kullanıcı anonymous mu: \\${currentUser?.isAnonymous ?? false}',
+          tag: 'Auth');
+
       if (currentUser != null && currentUser.isAnonymous) {
         // Anonymous kullanıcıyı Google hesabı ile linkle
         wasAnonymous = true;
+        _logService.info(
+            'Anonymous kullanıcı tespit edildi, Google credential ile linkleme yapılacak',
+            tag: 'Auth');
         userCredential = await currentUser.linkWithCredential(credential);
+        _logService.info('Anonymous kullanıcı Google credential ile linklendi',
+            tag: 'Auth');
       } else {
+        _logService.info('Yeni Google kullanıcısı oluşturulacak', tag: 'Auth');
         userCredential = await _auth.signInWithCredential(credential);
       }
-      _logService.info('Google sign in successful: ${userCredential.user?.uid}',
+      _logService.info(
+          'Google sign in successful: \\${userCredential.user?.uid}',
           tag: 'Auth');
-      await createOrUpdateUserDocument(userCredential.user!);
+      _logService.info('wasAnonymous değeri: \\${wasAnonymous}', tag: 'Auth');
+
+      // Firestore'da kullanıcı dokümanı var mı kontrol et
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+      if (!userDoc.exists) {
+        await _auth.signOut();
+        throw Exception(
+            'Bu Google hesabı ile daha önce kayıt yapılmamış. Lütfen önce kayıt olun.');
+      }
 
       // Eğer anonymous kullanıcıdan geçiş yapıldıysa veri aktarımı yap
       if (wasAnonymous) {
+        _logService.info(
+            'Anonymous kullanıcıdan Google geçişi tespit edildi, veri aktarımı başlatılıyor...',
+            tag: 'Auth');
         await _migrateAnonymousDataToFirebase();
+        _logService.info('Google veri aktarımı tamamlandı', tag: 'Auth');
+      } else {
+        _logService.info(
+            'Anonymous kullanıcıdan Google geçişi değil, veri aktarımı yapılmayacak',
+            tag: 'Auth');
       }
 
       return userCredential;
     } catch (e) {
-      _logService.error('Google sign in failed: $e', tag: 'Auth', error: e);
-      throw Exception('Google authentication failed: ${e.toString()}');
-    }
-  }
-
-  // Create or update user document for Google Sign-In
-  Future<void> createOrUpdateUserDocument(User user) async {
-    try {
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        // New user - create document
-        await _firestore.collection('users').doc(user.uid).set({
-          'email': user.email,
-          'displayName': user.displayName,
-          'photoURL': user.photoURL,
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLogin': FieldValue.serverTimestamp(),
-          'isEmailVerified': user.emailVerified,
-          'isGuest': false,
-          'themeMode': 'system',
-          'notificationEnabled': true,
-          'newGameNotifications': false,
-          'statisticsNotifications': false,
-          'reminderNotifications': false,
-          'socialNotifications': true,
-        });
-
-        // Initialize notification services
-        await _initializeNotificationServices();
-      } else {
-        // Existing user - update last login
-        await _firestore.collection('users').doc(user.uid).update({
-          'lastLogin': FieldValue.serverTimestamp(),
-          'isEmailVerified': user.emailVerified,
-          'isGuest': false,
-        });
-      }
-    } catch (e) {
-      throw Exception(ErrorService.firestorePermissionDenied);
+      _logService.error('Google sign in failed: \\${e}', tag: 'Auth', error: e);
+      throw Exception('Google authentication failed: \\${e.toString()}');
     }
   }
 
@@ -662,25 +744,55 @@ class FirebaseService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
+        _logService.error(
+            'Veri aktarımı başarısız: Kullanıcı oturumu bulunamadı',
+            tag: 'Auth');
         throw Exception('Kullanıcı oturumu bulunamadı');
       }
 
+      _logService.info('Veri aktarımı başlatılıyor... Kullanıcı: ${user.uid}',
+          tag: 'Auth');
+
       final hasGuestData = await _guestDataService.hasGuestData();
       final isAlreadyMigrated = await _guestDataService.isGuestDataMigrated();
+
+      _logService.info('Misafir verisi var mı: $hasGuestData', tag: 'Auth');
+      _logService.info('Zaten aktarılmış mı: $isAlreadyMigrated', tag: 'Auth');
 
       if (hasGuestData && !isAlreadyMigrated) {
         _logService.info(
             'Anonymous kullanıcı verileri bulundu, Firebase\'e aktarılıyor...',
             tag: 'Auth');
+
+        // Misafir verilerini getir ve logla
+        final guestGames = await _guestDataService.getGuestGames();
+        final guestPlayers = await _guestDataService.getGuestPlayers();
+
+        _logService.info('Aktarılacak oyun sayısı: ${guestGames.length}',
+            tag: 'Auth');
+        _logService.info('Aktarılacak oyuncu sayısı: ${guestPlayers.length}',
+            tag: 'Auth');
+
         await _guestDataService.migrateGuestDataToFirebase();
         _logService.info(
             'Anonymous kullanıcı verileri başarıyla Firebase\'e aktarıldı',
             tag: 'Auth');
+      } else {
+        if (!hasGuestData) {
+          _logService.info('Misafir verisi bulunamadı, aktarım yapılmayacak',
+              tag: 'Auth');
+        } else if (isAlreadyMigrated) {
+          _logService.info(
+              'Veriler zaten aktarılmış, tekrar aktarım yapılmayacak',
+              tag: 'Auth');
+        }
       }
     } catch (e) {
       _logService.error('Anonymous kullanıcı verileri aktarılamadı: $e',
           tag: 'Auth', error: e);
       // Veriler aktarılamasa bile uygulama çalışmaya devam etsin
+      // Ancak hatayı fırlat ki kullanıcı bilgilendirilebilsin
+      throw Exception('Veri aktarımı başarısız: $e');
     }
   }
 
@@ -693,5 +805,194 @@ class FirebaseService {
   bool isCurrentUserGuest() {
     final user = _auth.currentUser;
     return isGuestUser(user);
+  }
+
+  // Kullanıcı hesabını ve tüm verilerini sil
+  Future<void> deleteUserAccount() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('Kullanıcı oturumu bulunamadı');
+      }
+
+      _logService.info('Kullanıcı hesabı silme işlemi başlatıldı: ${user.uid}',
+          tag: 'Auth');
+
+      // 1. Kullanıcıya bağlı tüm oyunları sil
+      _logService.info('Kullanıcı oyunları siliniyor...', tag: 'Auth');
+      final gamesQuery = await _firestore
+          .collection('games')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      final gamesBatch = _firestore.batch();
+      for (final doc in gamesQuery.docs) {
+        gamesBatch.delete(doc.reference);
+      }
+      await gamesBatch.commit();
+      _logService.info('${gamesQuery.docs.length} oyun silindi', tag: 'Auth');
+
+      // 2. Kullanıcıya bağlı tüm oyuncuları sil
+      _logService.info('Kullanıcı oyuncuları siliniyor...', tag: 'Auth');
+      final playersQuery = await _firestore
+          .collection('players')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      final playersBatch = _firestore.batch();
+      for (final doc in playersQuery.docs) {
+        playersBatch.delete(doc.reference);
+      }
+      await playersBatch.commit();
+      _logService.info('${playersQuery.docs.length} oyuncu silindi',
+          tag: 'Auth');
+
+      // 3. Kullanıcıya bağlı tüm bildirimleri sil
+      _logService.info('Kullanıcı bildirimleri siliniyor...', tag: 'Auth');
+      final notificationsQuery = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      final notificationsBatch = _firestore.batch();
+      for (final doc in notificationsQuery.docs) {
+        notificationsBatch.delete(doc.reference);
+      }
+      await notificationsBatch.commit();
+      _logService.info('${notificationsQuery.docs.length} bildirim silindi',
+          tag: 'Auth');
+
+      // 4. Kullanıcı dokümanını sil
+      _logService.info('Kullanıcı dokümanı siliniyor...', tag: 'Auth');
+      await _firestore.collection('users').doc(user.uid).delete();
+
+      // 5. Firebase Auth'dan kullanıcıyı sil
+      _logService.info('Firebase Auth kullanıcısı siliniyor...', tag: 'Auth');
+      await user.delete();
+
+      // 6. Google Sign-In'i temizle
+      await _googleSignIn.signOut();
+
+      _logService.info('Kullanıcı hesabı ve tüm verileri başarıyla silindi',
+          tag: 'Auth');
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'requires-recent-login':
+          errorMessage =
+              'Hesap silmek için son zamanlarda tekrar giriş yapmanız gerekiyor.';
+          break;
+        case 'user-not-found':
+          errorMessage = 'Kullanıcı bulunamadı.';
+          break;
+        case 'permission-denied':
+          errorMessage = 'Bu işlem için yetkiniz yok.';
+          break;
+        default:
+          errorMessage = 'Hesap silme işlemi başarısız: ${e.code}';
+      }
+      _logService.error('Hesap silme FirebaseAuthException: ${e.code}',
+          tag: 'Auth', error: e);
+      throw Exception(errorMessage);
+    } on FirebaseException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'permission-denied':
+          errorMessage = 'Veri silme işlemi için yetkiniz yok.';
+          break;
+        case 'unavailable':
+          errorMessage = 'Sunucu şu anda kullanılamıyor.';
+          break;
+        default:
+          errorMessage = 'Veri silme işlemi başarısız: ${e.code}';
+      }
+      _logService.error('Hesap silme FirebaseException: ${e.code}',
+          tag: 'Auth', error: e);
+      throw Exception(errorMessage);
+    } catch (e) {
+      _logService.error('Hesap silme genel hata', tag: 'Auth', error: e);
+      throw Exception(
+          'Hesap silme işlemi sırasında beklenmeyen bir hata oluştu');
+    }
+  }
+
+  // Kullanıcının hesap silme işlemi için yeniden kimlik doğrulaması gerekip gerekmediğini kontrol et
+  Future<bool> requiresRecentLoginForDelete() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      // Son giriş zamanını kontrol et (24 saat)
+      final lastSignInTime = user.metadata.lastSignInTime;
+      if (lastSignInTime == null) return true;
+
+      final now = DateTime.now();
+      final difference = now.difference(lastSignInTime);
+
+      // 24 saatten fazla geçmişse yeniden kimlik doğrulaması gerekir
+      return difference.inHours >= 24;
+    } catch (e) {
+      _logService.error('Yeniden kimlik doğrulama kontrolü hatası',
+          tag: 'Auth', error: e);
+      return true; // Hata durumunda güvenlik için true döndür
+    }
+  }
+
+  // Misafir kullanıcı hesabını sil
+  Future<void> deleteGuestAccount() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('Kullanıcı oturumu bulunamadı');
+      }
+
+      if (!user.isAnonymous) {
+        throw Exception('Bu işlem sadece misafir kullanıcılar için geçerlidir');
+      }
+
+      _logService.info(
+          'Misafir kullanıcı hesabı silme işlemi başlatıldı: ${user.uid}',
+          tag: 'Auth');
+
+      // 1. Misafir verilerini temizle
+      _logService.info('Misafir verileri temizleniyor...', tag: 'Auth');
+      await _guestDataService.clearGuestData();
+      _logService.info('Misafir verileri temizlendi', tag: 'Auth');
+
+      // 2. Firebase Auth'dan misafir kullanıcıyı sil
+      _logService.info('Firebase Auth misafir kullanıcısı siliniyor...',
+          tag: 'Auth');
+      await user.delete();
+
+      // 3. Google Sign-In'i temizle
+      await _googleSignIn.signOut();
+
+      _logService.info('Misafir kullanıcı hesabı başarıyla silindi',
+          tag: 'Auth');
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'requires-recent-login':
+          errorMessage =
+              'Hesap silmek için son zamanlarda tekrar giriş yapmanız gerekiyor.';
+          break;
+        case 'user-not-found':
+          errorMessage = 'Kullanıcı bulunamadı.';
+          break;
+        case 'permission-denied':
+          errorMessage = 'Bu işlem için yetkiniz yok.';
+          break;
+        default:
+          errorMessage = 'Misafir hesap silme işlemi başarısız: ${e.code}';
+      }
+      _logService.error('Misafir hesap silme FirebaseAuthException: ${e.code}',
+          tag: 'Auth', error: e);
+      throw Exception(errorMessage);
+    } catch (e) {
+      _logService.error('Misafir hesap silme genel hata',
+          tag: 'Auth', error: e);
+      throw Exception(
+          'Misafir hesap silme işlemi sırasında beklenmeyen bir hata oluştu');
+    }
   }
 }

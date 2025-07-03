@@ -5,6 +5,7 @@ import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -52,6 +53,18 @@ class _SplashScreenState extends State<SplashScreen>
       // Auth state'in ilk değerini bekle
       final user = await FirebaseAuth.instance.authStateChanges().first;
       if (user != null) {
+        // Firestore'da kullanıcı dokümanı var mı kontrol et
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (!userDoc.exists) {
+          await FirebaseAuth.instance.signOut();
+          if (mounted)
+            Navigator.pushReplacementNamed(
+                context, AppRouter.login); // Kayıt ekranına yönlendir
+          return;
+        }
         final isSessionActive = await _sessionService.isSessionActive();
         if (isSessionActive) {
           await _sessionService.refreshSession();

@@ -240,6 +240,65 @@ class _LoginScreenState extends State<LoginScreen>
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
+        if (errorMsg.contains('kayıt yapılmamış')) {
+          final goToSignUp = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Kayıt Gerekli'),
+              content: const Text(
+                  'Bu Google hesabı ile daha önce kayıt yapılmamış. Kayıt olmak ister misiniz?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hayır'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Kayıt Ol'),
+                ),
+              ],
+            ),
+          );
+          if (goToSignUp == true) {
+            setState(() {
+              _isSignUp = true;
+            });
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMsg),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleGoogleSignUp() async {
+    setState(() => _isLoading = true);
+    try {
+      final userCredential = await _firebaseService.signUpWithGoogle();
+      if (userCredential != null) {
+        await _sessionService.startSession();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Google ile kayıt başarılı'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pushReplacementNamed(context, AppRouter.home);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -540,54 +599,48 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                   ),
                                   if (!_isSignUp) ...[
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        TextButton(
-                                          onPressed: _isLoading
-                                              ? null
-                                              : () {
-                                                  setState(() {
-                                                    _isSignUp = true;
-                                                    _confirmPasswordController
-                                                        .clear();
-                                                  });
-                                                },
-                                          child: const Text(
-                                              'Hesabın yok mu? Kayıt Ol'),
-                                          style: TextButton.styleFrom(
-                                            padding: EdgeInsets.zero,
-                                            minimumSize: Size(0, 0),
-                                            tapTargetSize: MaterialTapTargetSize
-                                                .shrinkWrap,
-                                            textStyle: TextStyle(fontSize: 14),
+                                    const SizedBox(height: 16),
+                                    Center(
+                                      child: TextButton(
+                                        onPressed: _isLoading
+                                            ? null
+                                            : () {
+                                                setState(() {
+                                                  _isSignUp = true;
+                                                  _confirmPasswordController
+                                                      .clear();
+                                                });
+                                              },
+                                        child: const Text(
+                                            'Hesabın yok mu? Kayıt Ol'),
+                                        style: TextButton.styleFrom(
+                                          textStyle:
+                                              const TextStyle(fontSize: 15),
+                                        ),
+                                      ),
+                                    ),
+                                    Center(
+                                      child: TextButton(
+                                        onPressed:
+                                            _isLoading ? null : _resetPassword,
+                                        child: Text(
+                                          'Şifremi Unuttum',
+                                          style: TextStyle(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                            fontSize: 14,
                                           ),
                                         ),
-                                        const Spacer(),
-                                        TextButton(
-                                          onPressed: _isLoading
-                                              ? null
-                                              : _resetPassword,
-                                          child: Text(
-                                            'Şifremi Unuttum',
-                                            style: TextStyle(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                          style: TextButton.styleFrom(
-                                            padding: EdgeInsets.zero,
-                                            minimumSize: Size(0, 0),
-                                            tapTargetSize: MaterialTapTargetSize
-                                                .shrinkWrap,
-                                          ),
+                                        style: TextButton.styleFrom(
+                                          textStyle:
+                                              const TextStyle(fontSize: 14),
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   ],
-                                  if (_isSignUp)
+                                  if (_isSignUp) ...[
+                                    const SizedBox(height: 16),
                                     Center(
                                       child: TextButton(
                                         onPressed: _isLoading
@@ -602,14 +655,12 @@ class _LoginScreenState extends State<LoginScreen>
                                         child: const Text(
                                             'Zaten hesabın var mı? Giriş Yap'),
                                         style: TextButton.styleFrom(
-                                          padding: EdgeInsets.zero,
-                                          minimumSize: Size(0, 0),
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                          textStyle: TextStyle(fontSize: 14),
+                                          textStyle:
+                                              const TextStyle(fontSize: 15),
                                         ),
                                       ),
                                     ),
+                                  ],
                                   const SizedBox(height: 16),
                                   // Google Sign-In ve Misafir kullanıcı girişi
                                   Row(
@@ -646,39 +697,72 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                   const SizedBox(height: 16),
                                   // Google Sign-In Button
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: OutlinedButton.icon(
-                                      onPressed: _isLoading
-                                          ? null
-                                          : _handleGoogleSignIn,
-                                      icon: Container(
-                                        width: 20,
-                                        height: 20,
-                                        decoration: const BoxDecoration(
-                                          image: DecorationImage(
-                                            image: NetworkImage(
-                                              'https://developers.google.com/identity/images/g-logo.png',
+                                  if (_isSignUp)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton.icon(
+                                        onPressed: _isLoading
+                                            ? null
+                                            : _handleGoogleSignUp,
+                                        icon: Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: const BoxDecoration(
+                                            image: DecorationImage(
+                                              image: NetworkImage(
+                                                'https://developers.google.com/identity/images/g-logo.png',
+                                              ),
+                                              fit: BoxFit.contain,
                                             ),
-                                            fit: BoxFit.contain,
+                                          ),
+                                        ),
+                                        label:
+                                            const Text('Google ile Kayıt Ol'),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 16),
+                                          side: BorderSide(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .outline
+                                                .withOpacity(0.5),
                                           ),
                                         ),
                                       ),
-                                      label: Text(_isSignUp
-                                          ? 'Google ile Kayıt Ol'
-                                          : 'Google ile Giriş Yap'),
-                                      style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 16),
-                                        side: BorderSide(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .outline
-                                              .withOpacity(0.5),
+                                    ),
+                                  if (!_isSignUp)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton.icon(
+                                        onPressed: _isLoading
+                                            ? null
+                                            : _handleGoogleSignIn,
+                                        icon: Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: const BoxDecoration(
+                                            image: DecorationImage(
+                                              image: NetworkImage(
+                                                'https://developers.google.com/identity/images/g-logo.png',
+                                              ),
+                                              fit: BoxFit.contain,
+                                            ),
+                                          ),
+                                        ),
+                                        label:
+                                            const Text('Google ile Giriş Yap'),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 16),
+                                          side: BorderSide(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .outline
+                                                .withOpacity(0.5),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
                                   const SizedBox(height: 12),
                                   // Misafir kullanıcı girişi
                                   SizedBox(
