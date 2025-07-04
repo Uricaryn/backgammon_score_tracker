@@ -169,8 +169,15 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
 
       if (result.data['success']) {
         setState(() {
-          _scheduledNotifications =
-              List<Map<String, dynamic>>.from(result.data['notifications']);
+          // Safe casting for Firebase Cloud Functions data
+          final notifications = result.data['notifications'] as List?;
+          if (notifications != null) {
+            _scheduledNotifications = notifications
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+          } else {
+            _scheduledNotifications = [];
+          }
         });
       } else {
         // If collection doesn't exist yet, initialize with empty list
