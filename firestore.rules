@@ -10,6 +10,12 @@ service cloud.firestore {
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
 
     // Games collection rules
     match /games/{gameId} {
@@ -27,9 +33,9 @@ service cloud.firestore {
 
     // Users collection rules
     match /users/{userId} {
-      allow read: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow delete: if isAuthenticated() && isOwner(userId); // Kullanıcı kendi dokümanını silebilir
     }
 
@@ -43,10 +49,15 @@ service cloud.firestore {
 
     // Notification requests collection rules (for future push notifications)
     match /notification_requests/{requestId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
-      allow update: if isAuthenticated() && isOwner(resource.data.userId);
-      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow delete: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+    }
+
+    // Admin notifications collection rules - ONLY for admin users
+    match /admin_notifications/{notificationId} {
+      allow read, write: if isAdmin();
     }
   }
 } 
