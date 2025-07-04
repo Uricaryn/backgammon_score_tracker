@@ -19,6 +19,8 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// Firebase Admin SDK initialized successfully
+
 /**
  * Beta kullanıcılarına güncelleme bildirimi gönderen Cloud Function
  * Bu fonksiyon Firestore'da admin_notifications koleksiyonuna yeni bir belge eklendiğinde tetiklenir
@@ -174,33 +176,63 @@ async function sendToBetaUsersDirectly(message, updateData) {
             const tokenBatch = tokens.slice(i, i + batchSize);
             const userBatch = userIds.slice(i, i + batchSize);
             
-            const multicastMessage = {
-                ...message,
-                tokens: tokenBatch
-            };
-
-            delete multicastMessage.topic; // Topic'i kaldır
-
             try {
-                const response = await messaging.sendMulticast(multicastMessage);
-                console.log(`Successfully sent to ${response.successCount} devices out of ${tokenBatch.length}`);
+                // messaging.send() API'sini kullan - tek tek gönder
+                let successCount = 0;
+                let failureCount = 0;
+                const failedTokens = [];
                 
-                // Başarısız token'ları temizle
-                if (response.failureCount > 0) {
-                    const failedTokens = [];
-                    response.responses.forEach((resp, idx) => {
-                        if (!resp.success) {
-                            failedTokens.push(tokenBatch[idx]);
-                            console.log('Failed token:', tokenBatch[idx], 'Error:', resp.error);
-                        }
-                    });
+                for (let j = 0; j < tokenBatch.length; j++) {
+                    const token = tokenBatch[j];
+                    const singleMessage = {
+                        ...message,
+                        token: token
+                    };
                     
-                    // Geçersiz token'ları temizle
+                    // Topic'i kaldır
+                    delete singleMessage.topic;
+                    
+                    try {
+                        const response = await messaging.send(singleMessage);
+                        console.log(`Successfully sent to token ${token}: ${response}`);
+                        successCount++;
+                    } catch (error) {
+                        console.log(`Failed to send to token ${token}: ${error.message}`);
+                        failureCount++;
+                        failedTokens.push(token);
+                        
+                        // Geçersiz token'ı temizle
+                        if (error.code === 'messaging/registration-token-not-registered' || 
+                            error.code === 'messaging/invalid-registration-token') {
+                            const userId = userBatch[j];
+                            if (userId) {
+                                try {
+                                    await db.collection('users').doc(userId).update({
+                                        fcmToken: admin.firestore.FieldValue.delete(),
+                                        tokenInvalidAt: admin.firestore.FieldValue.serverTimestamp()
+                                    });
+                                    console.log(`Cleaned up invalid token for user ${userId}`);
+                                } catch (cleanupError) {
+                                    console.error(`Error cleaning up token for user ${userId}:`, cleanupError);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`Successfully sent to ${successCount} devices out of ${tokenBatch.length}`);
+                
+                // Başarısız token'ları toplu temizle
+                if (failedTokens.length > 0) {
                     await cleanupInvalidTokens(failedTokens, userBatch);
                 }
                 
             } catch (error) {
-                console.error('Error sending multicast message:', error);
+                console.error('Error sending messages:', error);
+                // Detaylı hata bilgisi
+                if (error.details) {
+                    console.error('Error details:', error.details);
+                }
             }
         }
 
