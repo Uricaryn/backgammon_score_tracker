@@ -30,7 +30,6 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
   final _generalTitleController = TextEditingController();
   final _generalMessageController = TextEditingController();
   String _targetAudience = 'all_users';
-  bool _sendToAll = false;
 
   // Scheduled Notification Form
   final _scheduledFormKey = GlobalKey<FormState>();
@@ -243,7 +242,6 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
         'title': _generalTitleController.text.trim(),
         'message': _generalMessageController.text.trim(),
         'targetAudience': _targetAudience,
-        'sendToAll': _sendToAll,
       });
 
       if (result.data['success']) {
@@ -254,7 +252,6 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
         _generalMessageController.clear();
         setState(() {
           _targetAudience = 'all_users';
-          _sendToAll = false;
         });
       } else {
         _showError('Genel bildirim gönderilemedi');
@@ -761,16 +758,6 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                         ],
                         onChanged: (value) =>
                             setState(() => _targetAudience = value!),
-                      ),
-                      const SizedBox(height: 16),
-
-                      CheckboxListTile(
-                        title: const Text('Herkese Gönder'),
-                        subtitle: const Text(
-                            'Aktif olmayan kullanıcıları da dahil et'),
-                        value: _sendToAll,
-                        onChanged: (value) =>
-                            setState(() => _sendToAll = value ?? false),
                       ),
                     ],
                   ),

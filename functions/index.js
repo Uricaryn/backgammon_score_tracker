@@ -371,7 +371,7 @@ exports.sendGeneralNotification = onCall(async (request) => {
     }
 
     const uid = request.auth.uid;
-    const { title, message, targetAudience, sendToAll } = request.data;
+    const { title, message, targetAudience } = request.data;
     
     // Admin kontrolü
     const userDoc = await db.collection('users').doc(uid).get();
@@ -391,7 +391,6 @@ exports.sendGeneralNotification = onCall(async (request) => {
             title: title,
             message: message,
             targetAudience: targetAudience || 'all_users',
-            sendToAll: sendToAll || false,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             createdBy: uid,
             status: 'pending',
@@ -402,7 +401,7 @@ exports.sendGeneralNotification = onCall(async (request) => {
         // Kullanıcıları al ve bildirim gönder
         let usersQuery = db.collection('users');
         
-        console.log(`Searching for users with sendToAll: ${sendToAll}, targetAudience: ${targetAudience}`);
+        console.log(`Searching for users with targetAudience: ${targetAudience}`);
         
         // Hedef kitleye göre filtreleme
         if (targetAudience === 'active_users') {
@@ -430,7 +429,8 @@ exports.sendGeneralNotification = onCall(async (request) => {
             if (totalUsers === 0) {
                 throw new Error('No users found in database. Please ensure users are registered.');
             } else {
-                throw new Error(`No ${sendToAll ? '' : 'active '}users found. Total users: ${totalUsers}`);
+                const userType = targetAudience === 'all_users' ? '' : `${targetAudience} `;
+                throw new Error(`No ${userType}users found. Total users: ${totalUsers}`);
             }
         }
 
@@ -500,37 +500,39 @@ exports.sendGeneralNotification = onCall(async (request) => {
             const tokenBatch = tokens.slice(i, i + batchSize);
             const userBatch = userIds.slice(i, i + batchSize);
             
-            const multicastMessage = {
-                ...fcmMessage,
-                tokens: tokenBatch
-            };
+            // Tek tek token'lara gönder (multicast sorunu için)
+            for (let j = 0; j < tokenBatch.length; j++) {
+                const token = tokenBatch[j];
+                const singleMessage = {
+                    ...fcmMessage,
+                    token: token
+                };
 
-            try {
-                const response = await messaging.sendMulticast(multicastMessage);
-                console.log(`Successfully sent to ${response.successCount} devices out of ${tokenBatch.length}`);
-                
-                totalSent += response.successCount;
-                totalFailed += response.failureCount;
-                
-                // Başarısız token'ları temizle ve detaylı log
-                if (response.failureCount > 0) {
-                    const failedTokens = [];
-                    response.responses.forEach((resp, idx) => {
-                        if (!resp.success) {
-                            failedTokens.push(tokenBatch[idx]);
-                            console.log(`Failed to send to token ${tokenBatch[idx]}: ${resp.error && resp.error.message ? resp.error.message : 'Unknown error'}`);
-                        }
-                    });
+                try {
+                    const response = await messaging.send(singleMessage);
+                    console.log(`Successfully sent to token ${token}: ${response}`);
+                    totalSent++;
+                } catch (error) {
+                    console.log(`Failed to send to token ${token}: ${error.message}`);
+                    totalFailed++;
                     
-                    await cleanupInvalidTokens(failedTokens, userBatch);
-                } else {
-                    console.log(`All ${tokenBatch.length} notifications sent successfully`);
+                    // Geçersiz token'ı temizle
+                    if (error.code === 'messaging/registration-token-not-registered' || 
+                        error.code === 'messaging/invalid-registration-token') {
+                        const userId = userBatch[j];
+                        if (userId) {
+                            try {
+                                await db.collection('users').doc(userId).update({
+                                    fcmToken: admin.firestore.FieldValue.delete(),
+                                    tokenInvalidAt: admin.firestore.FieldValue.serverTimestamp()
+                                });
+                                console.log(`Cleaned up invalid token for user ${userId}`);
+                            } catch (cleanupError) {
+                                console.error(`Error cleaning up token for user ${userId}:`, cleanupError);
+                            }
+                        }
+                    }
                 }
-                
-            } catch (error) {
-                console.error('Error sending multicast message:', error);
-                console.error('Message structure:', JSON.stringify(multicastMessage, null, 2));
-                totalFailed += tokenBatch.length;
             }
         }
 
@@ -872,33 +874,39 @@ async function sendScheduledNotificationToUsers(data) {
         const tokenBatch = tokens.slice(i, i + batchSize);
         const userBatch = userIds.slice(i, i + batchSize);
         
-        const multicastMessage = {
-            ...fcmMessage,
-            tokens: tokenBatch
-        };
+        // Tek tek token'lara gönder (multicast sorunu için)
+        for (let j = 0; j < tokenBatch.length; j++) {
+            const token = tokenBatch[j];
+            const singleMessage = {
+                ...fcmMessage,
+                token: token
+            };
 
-        try {
-            const response = await messaging.sendMulticast(multicastMessage);
-            console.log(`Successfully sent scheduled notification to ${response.successCount} devices`);
-            
-            totalSent += response.successCount;
-            totalFailed += response.failureCount;
-            
-            // Başarısız token'ları temizle
-            if (response.failureCount > 0) {
-                const failedTokens = [];
-                response.responses.forEach((resp, idx) => {
-                    if (!resp.success) {
-                        failedTokens.push(tokenBatch[idx]);
-                    }
-                });
+            try {
+                const response = await messaging.send(singleMessage);
+                console.log(`Successfully sent to token ${token}: ${response}`);
+                totalSent++;
+            } catch (error) {
+                console.log(`Failed to send to token ${token}: ${error.message}`);
+                totalFailed++;
                 
-                await cleanupInvalidTokens(failedTokens, userBatch);
+                // Geçersiz token'ı temizle
+                if (error.code === 'messaging/registration-token-not-registered' || 
+                    error.code === 'messaging/invalid-registration-token') {
+                    const userId = userBatch[j];
+                    if (userId) {
+                        try {
+                            await db.collection('users').doc(userId).update({
+                                fcmToken: admin.firestore.FieldValue.delete(),
+                                tokenInvalidAt: admin.firestore.FieldValue.serverTimestamp()
+                            });
+                            console.log(`Cleaned up invalid token for user ${userId}`);
+                        } catch (cleanupError) {
+                            console.error(`Error cleaning up token for user ${userId}:`, cleanupError);
+                        }
+                    }
+                }
             }
-            
-        } catch (error) {
-            console.error('Error sending scheduled notification batch:', error);
-            totalFailed += tokenBatch.length;
         }
     }
 
