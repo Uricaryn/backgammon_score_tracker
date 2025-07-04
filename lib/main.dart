@@ -19,6 +19,31 @@ import 'package:backgammon_score_tracker/core/services/log_service.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Background'da bildirim göster
+  if (message.notification != null) {
+    try {
+      // Timezone initialize (bildirimler için gerekli)
+      tz.initializeTimeZones();
+
+      // Notification service'i initialize et
+      final notificationService = NotificationService();
+      await notificationService.initialize();
+      await notificationService.createNotificationChannels();
+
+      // Bildirimi göster
+      await notificationService.showNotification(
+        title: message.notification!.title ?? 'Yeni Bildirim',
+        body: message.notification!.body ?? '',
+        payload: message.data.toString(),
+        saveToFirebase: false, // Background'da Firebase'e kaydetme
+      );
+
+      print('Background notification shown: ${message.notification!.title}');
+    } catch (e) {
+      print('Error showing background notification: $e');
+    }
+  }
 }
 
 void main() async {

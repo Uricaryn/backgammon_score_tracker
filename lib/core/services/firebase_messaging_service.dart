@@ -50,10 +50,14 @@ class FirebaseMessagingService {
       if (_fcmToken != null) {
         debugPrint('FCM Token: $_fcmToken');
         await _saveFCMToken(_fcmToken!);
+      } else {
+        debugPrint('Failed to get FCM token');
+        throw Exception('FCM token could not be retrieved');
       }
 
       // Token yenilendiğinde
       _messaging.onTokenRefresh.listen((newToken) {
+        debugPrint('FCM Token refreshed: $newToken');
         _fcmToken = newToken;
         _saveFCMToken(newToken);
       });
@@ -85,14 +89,38 @@ class FirebaseMessagingService {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        await _firestore.collection('users').doc(user.uid).update({
-          'fcmToken': token,
-          'lastTokenUpdate': FieldValue.serverTimestamp(),
-        });
+        // Kullanıcı dokümantının var olup olmadığını kontrol et
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+
+        if (userDoc.exists) {
+          // Kullanıcı mevcut - sadece FCM token güncelle
+          await _firestore.collection('users').doc(user.uid).update({
+            'fcmToken': token,
+            'lastTokenUpdate': FieldValue.serverTimestamp(),
+            // isActive field'ını da güncelle (migration için)
+            'isActive': true,
+          });
+        } else {
+          // Kullanıcı dokümantı yoksa oluştur
+          await _firestore.collection('users').doc(user.uid).set({
+            'fcmToken': token,
+            'lastTokenUpdate': FieldValue.serverTimestamp(),
+            'createdAt': FieldValue.serverTimestamp(),
+            'isActive': true,
+            'email': user.email,
+            'isEmailVerified': user.emailVerified,
+            'lastLogin': FieldValue.serverTimestamp(),
+            'notificationEnabled': true,
+            'socialNotifications': true,
+            'subscribedToUpdates': true,
+          });
+        }
         debugPrint('FCM token saved to Firestore');
       }
     } catch (e) {
       debugPrint('Error saving FCM token: $e');
+      // Hata durumunda rethrow etme, uygulama çalışmaya devam etsin
     }
   }
 

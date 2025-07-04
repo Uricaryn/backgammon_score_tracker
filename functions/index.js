@@ -512,20 +512,24 @@ exports.sendGeneralNotification = onCall(async (request) => {
                 totalSent += response.successCount;
                 totalFailed += response.failureCount;
                 
-                // Başarısız token'ları temizle
+                // Başarısız token'ları temizle ve detaylı log
                 if (response.failureCount > 0) {
                     const failedTokens = [];
                     response.responses.forEach((resp, idx) => {
                         if (!resp.success) {
                             failedTokens.push(tokenBatch[idx]);
+                            console.log(`Failed to send to token ${tokenBatch[idx]}: ${resp.error && resp.error.message ? resp.error.message : 'Unknown error'}`);
                         }
                     });
                     
                     await cleanupInvalidTokens(failedTokens, userBatch);
+                } else {
+                    console.log(`All ${tokenBatch.length} notifications sent successfully`);
                 }
                 
             } catch (error) {
                 console.error('Error sending multicast message:', error);
+                console.error('Message structure:', JSON.stringify(multicastMessage, null, 2));
                 totalFailed += tokenBatch.length;
             }
         }

@@ -324,6 +324,54 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
     }
   }
 
+  // Run user migration
+  Future<void> _runUserMigration() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kullanıcı Verilerini Düzelt'),
+        content: const Text(
+          'Bu işlem tüm kullanıcılara isActive field\'ını ekleyecek. '
+          'Bu işlem geri alınamaz. Devam etmek istiyor musunuz?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('İptal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Devam Et'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final callable =
+          FirebaseFunctions.instance.httpsCallable('migrateUserActiveField');
+      final result = await callable.call();
+
+      if (result.data['success']) {
+        _showSuccess(
+          'Migration tamamlandı! ${result.data['updatedUsers']} kullanıcı güncellendi. '
+          'Toplam kullanıcı: ${result.data['totalUsers']}',
+        );
+      } else {
+        _showError('Migration başarısız oldu');
+      }
+    } catch (e) {
+      _showError('Migration hatası: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -723,6 +771,56 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                         value: _sendToAll,
                         onChanged: (value) =>
                             setState(() => _sendToAll = value ?? false),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Migration Card
+              Card(
+                color: Colors.orange.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.build,
+                            color: Colors.orange.shade700,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Kullanıcı Verisi Düzeltme',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Eğer "No active users found" hatası alıyorsanız, kullanıcılara isActive field\'ını eklemek için migration çalıştırın.',
+                        style: TextStyle(fontSize: 13, color: Colors.black87),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _runUserMigration,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.auto_fix_high, size: 18),
+                          label: const Text('Kullanıcı Verilerini Düzelt'),
+                        ),
                       ),
                     ],
                   ),
