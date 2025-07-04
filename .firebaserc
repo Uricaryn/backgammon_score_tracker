@@ -1,6 +1,7 @@
 {
   "projects": {
-    "backgammon": "backgammon-3e34c"
+    "backgammon": "backgammon-3e34c",
+    "default": "backgammon-3e34c"
   },
   "targets": {},
   "etags": {}
