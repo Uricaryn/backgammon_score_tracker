@@ -82,3 +82,31 @@ logs/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Firebase additional security files
+firebase-debug.log
+firebase-debug.*.log
+.runtimeconfig.json
+functions/.runtimeconfig.json
+
+# Firebase cache and temporary files
+.firebase/
+.firebaserc.local
+
+# Service account keys (extra protection)
+**/serviceAccountKey.json
+**/service-account-*.json
+**/*-firebase-adminsdk-*.json
+
+# Database exports
+**/database-export.json
+**/firestore-export.json
+
+# CI/CD secrets
+.github/secrets/
+deploy.key
+deployment.json
+
+# IDE specific (additional)
+.vscode/settings.json
+.vscode/launch.json

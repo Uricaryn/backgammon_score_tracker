@@ -1,2 +1,20 @@
 node_modules/
 *.local
+
+# Firebase Functions specific
+.runtimeconfig.json
+.env
+.env.local
+.env.production
+
+# Service account keys
+serviceAccountKey.json
+*-firebase-adminsdk-*.json
+
+# Firebase debug logs
+firebase-debug.log
+firebase-debug.*.log
+
+# Package manager locks (optional, depends on team preference)
+# npm-debug.log
+# yarn-error.log
