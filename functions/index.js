@@ -402,19 +402,41 @@ exports.sendGeneralNotification = onCall(async (request) => {
         // Kullanıcıları al ve bildirim gönder
         let usersQuery = db.collection('users');
         
-        if (!sendToAll) {
-            // Sadece aktif kullanıcıları al
+        console.log(`Searching for users with sendToAll: ${sendToAll}, targetAudience: ${targetAudience}`);
+        
+        // Hedef kitleye göre filtreleme
+        if (targetAudience === 'active_users') {
+            // Sadece aktif kullanıcıları al - isActive field'ı olan ve true olanlar
             usersQuery = usersQuery.where('isActive', '==', true);
+            console.log('Filtering for active users only');
+        } else if (targetAudience === 'beta_users') {
+            // Beta kullanıcıları al
+            usersQuery = usersQuery.where('isBetaUser', '==', true);
+            console.log('Filtering for beta users only');
+        } else {
+            // all_users - hiç filtreleme yapma, tüm kullanıcıları al
+            console.log('Getting all users (no filtering)');
         }
 
         const usersSnapshot = await usersQuery.get();
+        console.log(`Found ${usersSnapshot.size} users in database`);
         
         if (usersSnapshot.empty) {
-            throw new Error('No users found');
+            // Daha detaylı hata mesajı
+            const totalUsersSnapshot = await db.collection('users').get();
+            const totalUsers = totalUsersSnapshot.size;
+            console.log(`Total users in database: ${totalUsers}`);
+            
+            if (totalUsers === 0) {
+                throw new Error('No users found in database. Please ensure users are registered.');
+            } else {
+                throw new Error(`No ${sendToAll ? '' : 'active '}users found. Total users: ${totalUsers}`);
+            }
         }
 
         const tokens = [];
         const userIds = [];
+        let usersWithoutToken = 0;
 
         // FCM token'larını topla
         usersSnapshot.forEach(doc => {
@@ -422,11 +444,16 @@ exports.sendGeneralNotification = onCall(async (request) => {
             if (userData.fcmToken) {
                 tokens.push(userData.fcmToken);
                 userIds.push(doc.id);
+            } else {
+                usersWithoutToken++;
             }
         });
 
+        console.log(`Users with FCM tokens: ${tokens.length}`);
+        console.log(`Users without FCM tokens: ${usersWithoutToken}`);
+
         if (tokens.length === 0) {
-            throw new Error('No FCM tokens found');
+            throw new Error(`No FCM tokens found. Total users: ${usersSnapshot.size}, Users without tokens: ${usersWithoutToken}`);
         }
 
         // FCM mesajı oluştur
@@ -873,3 +900,58 @@ async function sendScheduledNotificationToUsers(data) {
 
     return { totalSent, totalFailed };
 }
+
+/**
+ * Migration fonksiyonu: Kullanıcılara eksik isActive field'ını ekler
+ * Sadece admin kullanıcıları çağırabilir
+ */
+exports.migrateUserActiveField = onCall(async (request) => {
+    // Authentication kontrolü
+    if (!request.auth) {
+        throw new Error('User must be authenticated');
+    }
+
+    const uid = request.auth.uid;
+    
+    // Admin kontrolü
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists || !userDoc.data().isAdmin) {
+        throw new Error('User must be admin');
+    }
+
+    try {
+        // isActive field'ı olmayan kullanıcıları bul
+        const usersSnapshot = await db.collection('users').get();
+        let updatedCount = 0;
+        let totalCount = usersSnapshot.size;
+
+        const batch = db.batch();
+        
+        usersSnapshot.forEach(doc => {
+            const userData = doc.data();
+            if (userData.isActive === undefined) {
+                // isActive field'ı yoksa ekle (varsayılan true)
+                batch.update(doc.ref, { 
+                    isActive: true,
+                    migrationDate: admin.firestore.FieldValue.serverTimestamp()
+                });
+                updatedCount++;
+            }
+        });
+
+        if (updatedCount > 0) {
+            await batch.commit();
+        }
+
+        return {
+            success: true,
+            message: `Migration completed. ${updatedCount} out of ${totalCount} users updated.`,
+            totalUsers: totalCount,
+            updatedUsers: updatedCount
+        };
+
+    } catch (error) {
+        console.error('Error during migration:', error);
+        throw new Error('Migration failed');
+    }
+});

@@ -59,5 +59,15 @@ service cloud.firestore {
     match /admin_notifications/{notificationId} {
       allow read, write: if isAdmin();
     }
+
+    // General notifications collection rules - ONLY for admin users
+    match /general_notifications/{notificationId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Scheduled notifications collection rules - ONLY for admin users
+    match /scheduled_notifications/{notificationId} {
+      allow read, write: if isAdmin();
+    }
   }
 } 
