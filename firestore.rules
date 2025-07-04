@@ -30,7 +30,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isOwner(userId);
       allow create: if isAuthenticated() && isOwner(userId);
       allow update: if isAuthenticated() && isOwner(userId);
-      allow delete: if false; // Prevent user document deletion
+      allow delete: if isAuthenticated() && isOwner(userId); // Kullanıcı kendi dokümanını silebilir
     }
 
     // Notifications collection rules

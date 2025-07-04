@@ -2,6 +2,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 
@@ -19,11 +22,15 @@ class NotificationService {
   static const int _morningReminderId = 1001;
   static const int _afternoonReminderId = 1002;
   static const int _eveningReminderId = 1003;
+  static const int _welcomeNotificationId = 1004;
 
   // Sosyal bildirim saatleri
   static const int _morningHour = 10; // 10:00
   static const int _afternoonHour = 15; // 15:00
   static const int _eveningHour = 20; // 20:00
+
+  // Shared preferences key'leri
+  static const String _lastWelcomeNotificationKey = 'last_welcome_notification';
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -82,6 +89,7 @@ class NotificationService {
     required String body,
     String? payload,
     NotificationType type = NotificationType.general,
+    bool saveToFirebase = true,
   }) async {
     if (!_isInitialized) {
       await initialize();
@@ -124,8 +132,47 @@ class NotificationService {
         platformChannelSpecifics,
         payload: payload,
       );
+
+      // Firebase'e kaydet (eğer istenirse)
+      if (saveToFirebase) {
+        await _saveNotificationToFirebase(title, body, type, payload);
+      }
     } catch (e) {
       throw Exception(ErrorService.notificationSendFailed);
+    }
+  }
+
+  // Bildirimi Firebase'e kaydet
+  Future<void> _saveNotificationToFirebase(
+    String title,
+    String body,
+    NotificationType type,
+    String? payload,
+  ) async {
+    try {
+      final auth = FirebaseAuth.instance;
+      final firestore = FirebaseFirestore.instance;
+
+      final user = auth.currentUser;
+      if (user != null && !user.isAnonymous) {
+        await firestore.collection('notifications').add({
+          'userId': user.uid,
+          'title': title,
+          'body': body,
+          'type': type.toString().split('.').last,
+          'timestamp': FieldValue.serverTimestamp(),
+          'isRead': false,
+          'data': {
+            'payload': payload,
+            'source': 'local_notification',
+            'timestamp': DateTime.now().toIso8601String(),
+          },
+        });
+        debugPrint('Yerel bildirim Firebase\'e kaydedildi: $title');
+      }
+    } catch (e) {
+      debugPrint('Firebase kaydetme hatası: $e');
+      // Hata durumunda bildirim gösterilmeye devam etsin
     }
   }
 
@@ -195,8 +242,62 @@ class NotificationService {
   }
 
   void _onNotificationTapped(NotificationResponse response) {
+    // Sosyal bildirimler için Firebase'e kaydet
+    if (response.payload == 'social_reminder') {
+      _saveSocialNotificationToFirebase(response);
+    }
+
     // Burada bildirime tıklandığında yapılacak işlemler
     // Örneğin: Belirli bir sayfaya yönlendirme
+  }
+
+  // Sosyal bildirimi Firebase'e kaydet
+  Future<void> _saveSocialNotificationToFirebase(
+      NotificationResponse response) async {
+    try {
+      final auth = FirebaseAuth.instance;
+      final firestore = FirebaseFirestore.instance;
+
+      final user = auth.currentUser;
+      if (user != null && !user.isAnonymous) {
+        // Notification ID'den hangi sosyal bildirim olduğunu anla
+        String title = 'Sosyal Bildirim';
+        String body = 'Tavla oynama zamanı!';
+
+        final now = DateTime.now();
+        if (now.hour >= 9 && now.hour <= 11) {
+          title = 'Günaydın! 🎲';
+          body =
+              'Yeni bir tavla günü başladı! Arkadaşlarınızla oyun oynamaya ne dersiniz?';
+        } else if (now.hour >= 14 && now.hour <= 16) {
+          title = 'Öğleden Sonra Molası ☕';
+          body =
+              'Tavla oynayarak stres atmanın tam zamanı! Hemen bir oyun başlatın.';
+        } else if (now.hour >= 19 && now.hour <= 21) {
+          title = 'Akşam Vakti 🏆';
+          body =
+              'Günün sonunda tavla şampiyonluğunu kim kazanacak? Hemen oynamaya başlayın!';
+        }
+
+        await firestore.collection('notifications').add({
+          'userId': user.uid,
+          'title': title,
+          'body': body,
+          'type': NotificationType.social.toString().split('.').last,
+          'timestamp': FieldValue.serverTimestamp(),
+          'isRead': false,
+          'data': {
+            'payload': response.payload,
+            'source': 'social_notification',
+            'timestamp': DateTime.now().toIso8601String(),
+          },
+        });
+
+        debugPrint('Sosyal bildirim Firebase\'e kaydedildi: $title');
+      }
+    } catch (e) {
+      debugPrint('Sosyal bildirim Firebase kaydetme hatası: $e');
+    }
   }
 
   // Bildirim kanallarını oluştur
@@ -229,6 +330,16 @@ class NotificationService {
         importance: Importance.defaultImportance,
       );
 
+      const AndroidNotificationChannel updateChannel =
+          AndroidNotificationChannel(
+        'update_notifications',
+        'Güncelleme Bildirimleri',
+        description: 'Uygulama güncelleme bildirimleri',
+        importance: Importance.high,
+        enableVibration: true,
+        playSound: true,
+      );
+
       await _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
@@ -243,6 +354,11 @@ class NotificationService {
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(socialChannel);
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(updateChannel);
     } catch (e) {
       // Hata durumunda sessizce geç
     }
@@ -364,6 +480,105 @@ class NotificationService {
           notification.id == _eveningReminderId);
     } catch (e) {
       return false;
+    }
+  }
+
+  // Hoşgeldin bildirimi göster
+  Future<void> showWelcomeNotification({String? userName}) async {
+    try {
+      // Bugün zaten hoşgeldin bildirimi gösterildi mi kontrol et
+      final canShowWelcome = await _canShowWelcomeNotification();
+      if (!canShowWelcome) return;
+
+      final hasPermission = await checkPermissions();
+      if (!hasPermission) return;
+
+      // Hoşgeldin mesajları listesi
+      final welcomeMessages = [
+        {
+          'title': 'Hoşgeldin! 🎉',
+          'body': userName != null
+              ? 'Tekrar hoşgeldin $userName! Bugün hangi rakibini yeneceksin?'
+              : 'Tekrar hoşgeldin! Bugün hangi rakibini yeneceksin?',
+        },
+        {
+          'title': 'Yeni Gün, Yeni Zaferler! 🏆',
+          'body': userName != null
+              ? 'Merhaba $userName! Bugün de şampiyonluk yolunda adım atmaya hazır mısın?'
+              : 'Merhaba! Bugün de şampiyonluk yolunda adım atmaya hazır mısın?',
+        },
+        {
+          'title': 'Tavla Zamanı! 🎲',
+          'body': userName != null
+              ? 'Selam $userName! Yeni bir tavla günü başladı. Hadi oyuna!'
+              : 'Selam! Yeni bir tavla günü başladı. Hadi oyuna!',
+        },
+        {
+          'title': 'Geri Döndün! 🔥',
+          'body': userName != null
+              ? 'Harika $userName! Masalar seni bekliyor. Bugün kaç galibiyet alacaksın?'
+              : 'Harika! Masalar seni bekliyor. Bugün kaç galibiyet alacaksın?',
+        },
+      ];
+
+      // Rastgele bir hoşgeldin mesajı seç
+      final randomIndex = DateTime.now().millisecond % welcomeMessages.length;
+      final selectedMessage = welcomeMessages[randomIndex];
+
+      await showNotification(
+        title: selectedMessage['title']!,
+        body: selectedMessage['body']!,
+        type: NotificationType.general,
+        payload: 'welcome_notification',
+      );
+
+      // Son hoşgeldin bildirimi tarihini kaydet
+      await _saveLastWelcomeNotificationDate();
+
+      debugPrint('Hoşgeldin bildirimi gösterildi: ${selectedMessage['title']}');
+    } catch (e) {
+      debugPrint('Hoşgeldin bildirimi gösterilirken hata: $e');
+    }
+  }
+
+  // Hoşgeldin bildirimi gösterilebilir mi kontrol et
+  Future<bool> _canShowWelcomeNotification() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastWelcomeDate = prefs.getString(_lastWelcomeNotificationKey);
+
+      if (lastWelcomeDate == null) return true;
+
+      final lastDate = DateTime.parse(lastWelcomeDate);
+      final today = DateTime.now();
+
+      // Eğer son hoşgeldin bildirimi bugün gösterilmediyse, göster
+      return lastDate.year != today.year ||
+          lastDate.month != today.month ||
+          lastDate.day != today.day;
+    } catch (e) {
+      return true; // Hata durumunda bildirimi göster
+    }
+  }
+
+  // Son hoşgeldin bildirimi tarihini kaydet
+  Future<void> _saveLastWelcomeNotificationDate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _lastWelcomeNotificationKey, DateTime.now().toIso8601String());
+    } catch (e) {
+      debugPrint('Hoşgeldin bildirimi tarihi kaydedilirken hata: $e');
+    }
+  }
+
+  // Hoşgeldin bildirimi ayarlarını sıfırla (test için)
+  Future<void> resetWelcomeNotificationSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_lastWelcomeNotificationKey);
+    } catch (e) {
+      debugPrint('Hoşgeldin bildirimi ayarları sıfırlanırken hata: $e');
     }
   }
 }

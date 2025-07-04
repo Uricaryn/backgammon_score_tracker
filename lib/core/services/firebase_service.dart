@@ -35,6 +35,9 @@ class FirebaseService {
           _logService.info(
               'Kullanıcı girişi başarılı: ${userCredential.user!.uid}',
               tag: 'Auth');
+
+          // Hoşgeldin bildirimi göster
+          await _showWelcomeNotification(userCredential.user!);
         } catch (e) {
           _logService.warning('Kullanıcı dokümanı oluşturulamadı: $e',
               tag: 'Auth');
@@ -712,6 +715,9 @@ class FirebaseService {
             tag: 'Auth');
       }
 
+      // Hoşgeldin bildirimi göster
+      await _showWelcomeNotification(userCredential.user!);
+
       return userCredential;
     } catch (e) {
       _logService.error('Google sign in failed: \\${e}', tag: 'Auth', error: e);
@@ -993,6 +999,35 @@ class FirebaseService {
           tag: 'Auth', error: e);
       throw Exception(
           'Misafir hesap silme işlemi sırasında beklenmeyen bir hata oluştu');
+    }
+  }
+
+  // Hoşgeldin bildirimi göster
+  Future<void> _showWelcomeNotification(User user) async {
+    try {
+      // Misafir kullanıcılara hoşgeldin bildirimi gösterme
+      if (user.isAnonymous) return;
+
+      // Kullanıcı bilgilerini al
+      String? userName;
+      try {
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          userName =
+              userData['displayName'] ?? userData['email']?.split('@')[0];
+        }
+      } catch (e) {
+        _logService.warning('Kullanıcı bilgileri alınamadı: $e', tag: 'Auth');
+      }
+
+      // Hoşgeldin bildirimi göster
+      await _notificationService.showWelcomeNotification(userName: userName);
+      _logService.info('Hoşgeldin bildirimi gösterildi', tag: 'Auth');
+    } catch (e) {
+      _logService.warning('Hoşgeldin bildirimi gösterilirken hata: $e',
+          tag: 'Auth');
     }
   }
 }

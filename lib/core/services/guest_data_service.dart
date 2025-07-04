@@ -174,13 +174,23 @@ class GuestDataService {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
+        _logService.error(
+            'Veri aktarımı başarısız: Kullanıcı oturumu bulunamadı',
+            tag: 'GuestData');
         throw Exception('Kullanıcı oturumu bulunamadı');
       }
+
+      _logService.info(
+          'Firebase veri aktarımı başlatılıyor... Kullanıcı: ${user.uid}',
+          tag: 'GuestData');
 
       final prefs = await SharedPreferences.getInstance();
       final isMigrated = prefs.getBool(_guestDataMigratedKey) ?? false;
 
       if (isMigrated) {
+        _logService.info(
+            'Veriler zaten aktarılmış, tekrar aktarım yapılmayacak',
+            tag: 'GuestData');
         return; // Zaten aktarılmış
       }
 
@@ -188,27 +198,51 @@ class GuestDataService {
       final playersJson = prefs.getString(_guestPlayersKey) ?? '[]';
       final players = List<Map<String, dynamic>>.from(jsonDecode(playersJson));
 
+      _logService.info('${players.length} oyuncu aktarılacak',
+          tag: 'GuestData');
+
       for (final player in players) {
-        await FirebaseFirestore.instance.collection('players').add({
-          'name': player['name'],
-          'userId': user.uid,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        try {
+          await FirebaseFirestore.instance.collection('players').add({
+            'name': player['name'],
+            'userId': user.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          _logService.info('Oyuncu aktarıldı: ${player['name']}',
+              tag: 'GuestData');
+        } catch (e) {
+          _logService.error('Oyuncu aktarılamadı: ${player['name']} - $e',
+              tag: 'GuestData', error: e);
+          // Tek oyuncu aktarılamasa bile devam et
+        }
       }
 
       // Oyunları aktar
       final gamesJson = prefs.getString(_guestGamesKey) ?? '[]';
       final games = List<Map<String, dynamic>>.from(jsonDecode(gamesJson));
 
+      _logService.info('${games.length} oyun aktarılacak', tag: 'GuestData');
+
       for (final game in games) {
-        await FirebaseFirestore.instance.collection('games').add({
-          'player1': game['player1'],
-          'player2': game['player2'],
-          'player1Score': game['player1Score'],
-          'player2Score': game['player2Score'],
-          'timestamp': FieldValue.serverTimestamp(),
-          'userId': user.uid,
-        });
+        try {
+          await FirebaseFirestore.instance.collection('games').add({
+            'player1': game['player1'],
+            'player2': game['player2'],
+            'player1Score': game['player1Score'],
+            'player2Score': game['player2Score'],
+            'timestamp': FieldValue.serverTimestamp(),
+            'userId': user.uid,
+          });
+          _logService.info(
+              'Oyun aktarıldı: ${game['player1']} vs ${game['player2']}',
+              tag: 'GuestData');
+        } catch (e) {
+          _logService.error(
+              'Oyun aktarılamadı: ${game['player1']} vs ${game['player2']} - $e',
+              tag: 'GuestData',
+              error: e);
+          // Tek oyun aktarılamasa bile devam et
+        }
       }
 
       // Aktarım tamamlandı olarak işaretle
@@ -218,12 +252,13 @@ class GuestDataService {
       await prefs.remove(_guestGamesKey);
       await prefs.remove(_guestPlayersKey);
 
-      _logService.info('Misafir veriler Firebase\'e aktarıldı',
+      _logService.info(
+          'Misafir veriler Firebase\'e başarıyla aktarıldı ve temizlendi',
           tag: 'GuestData');
     } catch (e) {
-      _logService.error('Misafir veriler aktarılamadı',
+      _logService.error('Misafir veriler aktarılamadı: $e',
           tag: 'GuestData', error: e);
-      throw Exception('Veriler aktarılamadı');
+      throw Exception('Veriler aktarılamadı: $e');
     }
   }
 
@@ -237,8 +272,17 @@ class GuestDataService {
       final games = List<Map<String, dynamic>>.from(jsonDecode(gamesJson));
       final players = List<Map<String, dynamic>>.from(jsonDecode(playersJson));
 
-      return games.isNotEmpty || players.isNotEmpty;
+      final hasData = games.isNotEmpty || players.isNotEmpty;
+
+      _logService.info(
+          'Misafir veri kontrolü: Oyun sayısı: ${games.length}, Oyuncu sayısı: ${players.length}',
+          tag: 'GuestData');
+      _logService.info('Misafir veri var mı: $hasData', tag: 'GuestData');
+
+      return hasData;
     } catch (e) {
+      _logService.error('Misafir veri kontrolü hatası',
+          tag: 'GuestData', error: e);
       return false;
     }
   }
@@ -247,8 +291,15 @@ class GuestDataService {
   Future<bool> isGuestDataMigrated() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(_guestDataMigratedKey) ?? false;
+      final isMigrated = prefs.getBool(_guestDataMigratedKey) ?? false;
+
+      _logService.info('Misafir veri aktarım durumu kontrolü: $isMigrated',
+          tag: 'GuestData');
+
+      return isMigrated;
     } catch (e) {
+      _logService.error('Misafir veri aktarım durumu kontrolü hatası',
+          tag: 'GuestData', error: e);
       return false;
     }
   }

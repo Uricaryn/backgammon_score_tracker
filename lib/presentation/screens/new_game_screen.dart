@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/new_game_player_selector.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:ui';
@@ -30,6 +31,10 @@ class _NewGameScreenState extends State<NewGameScreen> {
   int _currentStep = 0;
   final int _totalSteps = 4;
 
+  // ✅ Performance optimizations
+  List<String>? _cachedPlayerNames;
+  bool _needsRefresh = true;
+
   // Adım başlıkları
   final List<String> _stepTitles = [
     'Oyuncu Seçimi',
@@ -54,6 +59,30 @@ class _NewGameScreenState extends State<NewGameScreen> {
 
   void _checkUserType() {
     _isGuestUser = _firebaseService.isCurrentUserGuest();
+  }
+
+  // ✅ Optimized player selection
+  void _selectPlayer(String playerName) {
+    String? newPlayer1 = _selectedPlayer1;
+    String? newPlayer2 = _selectedPlayer2;
+
+    if (_selectedPlayer1 == playerName) {
+      newPlayer1 = null;
+    } else if (_selectedPlayer2 == playerName) {
+      newPlayer2 = null;
+    } else if (_selectedPlayer1 == null) {
+      newPlayer1 = playerName;
+    } else if (_selectedPlayer2 == null && _selectedPlayer1 != playerName) {
+      newPlayer2 = playerName;
+    }
+
+    // ✅ Single setState call
+    if (newPlayer1 != _selectedPlayer1 || newPlayer2 != _selectedPlayer2) {
+      setState(() {
+        _selectedPlayer1 = newPlayer1;
+        _selectedPlayer2 = newPlayer2;
+      });
+    }
   }
 
   Widget _buildGuestPlayersList() {
@@ -135,13 +164,14 @@ class _NewGameScreenState extends State<NewGameScreen> {
           );
         }
 
-        final playerNames =
+        // ✅ Cache player names
+        _cachedPlayerNames =
             players.map((player) => player['name'] as String).toList();
 
         return Column(
           children: [
             // Son Oyuncular Hızlı Seçim
-            if (playerNames.isNotEmpty) ...[
+            if (_cachedPlayerNames!.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -163,49 +193,8 @@ class _NewGameScreenState extends State<NewGameScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: playerNames.take(4).map((player) {
-                        final isSelected1 = _selectedPlayer1 == player;
-                        final isSelected2 = _selectedPlayer2 == player;
-                        final isSelected = isSelected1 || isSelected2;
-
-                        return FilterChip(
-                          label: Text(player),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            if (selected) {
-                              if (_selectedPlayer1 == null) {
-                                setState(() {
-                                  _selectedPlayer1 = player;
-                                });
-                              } else if (_selectedPlayer2 == null &&
-                                  _selectedPlayer1 != player) {
-                                setState(() {
-                                  _selectedPlayer2 = player;
-                                });
-                              }
-                            } else {
-                              if (_selectedPlayer1 == player) {
-                                setState(() {
-                                  _selectedPlayer1 = null;
-                                });
-                              } else if (_selectedPlayer2 == player) {
-                                setState(() {
-                                  _selectedPlayer2 = null;
-                                });
-                              }
-                            }
-                          },
-                          avatar: isSelected1
-                              ? const Icon(Icons.person, size: 16)
-                              : isSelected2
-                                  ? const Icon(Icons.person_outline, size: 16)
-                                  : null,
-                        );
-                      }).toList(),
-                    ),
+                    // ✅ Optimize FilterChip with separate widget
+                    _buildPlayerChips(_cachedPlayerNames!.take(4).toList()),
                   ],
                 ),
               ),
@@ -232,7 +221,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                items: playerNames
+                items: _cachedPlayerNames!
                     .map((player) => DropdownMenuItem(
                           value: player,
                           child: Text(
@@ -243,9 +232,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                         ))
                     .toList(),
                 onChanged: (value) {
-                  setState(() {
-                    _selectedPlayer1 = value;
-                  });
+                  if (value != _selectedPlayer1) {
+                    setState(() {
+                      _selectedPlayer1 = value;
+                    });
+                  }
                 },
               ),
             ),
@@ -270,7 +261,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                items: playerNames
+                items: _cachedPlayerNames!
                     .map((player) => DropdownMenuItem(
                           value: player,
                           child: Text(
@@ -281,15 +272,36 @@ class _NewGameScreenState extends State<NewGameScreen> {
                         ))
                     .toList(),
                 onChanged: (value) {
-                  setState(() {
-                    _selectedPlayer2 = value;
-                  });
+                  if (value != _selectedPlayer2) {
+                    setState(() {
+                      _selectedPlayer2 = value;
+                    });
+                  }
                 },
               ),
             ),
           ],
         );
       },
+    );
+  }
+
+  // ✅ Separate widget for player chips to avoid rebuilding everything
+  Widget _buildPlayerChips(List<String> playerNames) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: playerNames.map((player) {
+        final isSelected1 = _selectedPlayer1 == player;
+        final isSelected2 = _selectedPlayer2 == player;
+        final isSelected = isSelected1 || isSelected2;
+
+        return FilterChip(
+          label: Text(player),
+          selected: isSelected,
+          onSelected: (selected) => _selectPlayer(player),
+        );
+      }).toList(),
     );
   }
 
@@ -374,7 +386,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
 
       if (mounted) {
         Navigator.pop(context);
-        setState(() {}); // Misafir kullanıcılar için listeyi yenile
+        // List will be refreshed automatically through FutureBuilder
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isGuestUser
@@ -410,7 +422,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
   }
 
   void _goToStep(int step) {
-    if (step >= 0 && step < _totalSteps) {
+    if (step >= 0 && step < _totalSteps && step != _currentStep) {
       setState(() {
         _currentStep = step;
       });
@@ -441,9 +453,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (!_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       if (_isGuestUser) {
@@ -795,31 +809,36 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                             label: Text(player),
                                             selected: isSelected,
                                             onSelected: (selected) {
+                                              String? newPlayer1 =
+                                                  _selectedPlayer1;
+                                              String? newPlayer2 =
+                                                  _selectedPlayer2;
+
                                               if (selected) {
-                                                if (_selectedPlayer1 == null) {
-                                                  setState(() {
-                                                    _selectedPlayer1 = player;
-                                                  });
-                                                } else if (_selectedPlayer2 ==
-                                                        null &&
-                                                    _selectedPlayer1 !=
-                                                        player) {
-                                                  setState(() {
-                                                    _selectedPlayer2 = player;
-                                                  });
+                                                if (newPlayer1 == null) {
+                                                  newPlayer1 = player;
+                                                } else if (newPlayer2 == null &&
+                                                    newPlayer1 != player) {
+                                                  newPlayer2 = player;
                                                 }
                                               } else {
-                                                if (_selectedPlayer1 ==
+                                                if (newPlayer1 == player) {
+                                                  newPlayer1 = null;
+                                                } else if (newPlayer2 ==
                                                     player) {
-                                                  setState(() {
-                                                    _selectedPlayer1 = null;
-                                                  });
-                                                } else if (_selectedPlayer2 ==
-                                                    player) {
-                                                  setState(() {
-                                                    _selectedPlayer2 = null;
-                                                  });
+                                                  newPlayer2 = null;
                                                 }
+                                              }
+
+                                              // ✅ Single setState call
+                                              if (newPlayer1 !=
+                                                      _selectedPlayer1 ||
+                                                  newPlayer2 !=
+                                                      _selectedPlayer2) {
+                                                setState(() {
+                                                  _selectedPlayer1 = newPlayer1;
+                                                  _selectedPlayer2 = newPlayer2;
+                                                });
                                               }
                                             },
                                             avatar: isSelected1
@@ -874,9 +893,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                           ))
                                       .toList(),
                                   onChanged: (value) {
-                                    setState(() {
-                                      _selectedPlayer1 = value;
-                                    });
+                                    if (value != _selectedPlayer1) {
+                                      setState(() {
+                                        _selectedPlayer1 = value;
+                                      });
+                                    }
                                   },
                                 ),
                               ),
@@ -916,9 +937,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                           ))
                                       .toList(),
                                   onChanged: (value) {
-                                    setState(() {
-                                      _selectedPlayer2 = value;
-                                    });
+                                    if (value != _selectedPlayer2) {
+                                      setState(() {
+                                        _selectedPlayer2 = value;
+                                      });
+                                    }
                                   },
                                 ),
                               ),
@@ -1163,7 +1186,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                       ))
                                   .toList(),
                               onChanged: (value) {
-                                if (value != null) {
+                                if (value != null && value != _player1Score) {
                                   setState(() {
                                     _player1Score = value;
                                   });
@@ -1222,7 +1245,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                       ))
                                   .toList(),
                               onChanged: (value) {
-                                if (value != null) {
+                                if (value != null && value != _player2Score) {
                                   setState(() {
                                     _player2Score = value;
                                   });

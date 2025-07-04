@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:timezone/data/latest.dart' as tz;
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
 import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
@@ -10,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:backgammon_score_tracker/firebase_options.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_messaging_service.dart';
+import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 
@@ -22,43 +24,106 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // LogService'i başlat
-  final logService = LogService();
-  await logService.initialize();
+  // ✅ Optimize initialization - only critical services
+  await _initializeCriticalServices();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // ✅ UI'yi başlat
+  runApp(const MyApp());
 
-  // Firebase messaging background handler'ı ayarla
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // ✅ Ağır initialization'ları daha sonra yap
+  _initializeHeavyServicesOptimized();
+}
 
-  // Bildirim servislerini başlat
+// Kritik servisler - UI başlamadan önce gerekli
+Future<void> _initializeCriticalServices() async {
+  try {
+    // ✅ Paralel initialization
+    await Future.wait([
+      // Firebase - kritik
+      Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+      // Timezone - bildirimler için gerekli
+      Future.microtask(() => tz.initializeTimeZones()),
+    ]);
+
+    // Firebase messaging background handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  } catch (e) {
+    debugPrint('Critical services initialization error: $e');
+  }
+}
+
+// ✅ Optimized heavy services initialization
+void _initializeHeavyServicesOptimized() {
+  // ✅ Daha da gecikme ile başlat
+  Future.delayed(const Duration(seconds: 1), () async {
+    final logService = LogService();
+
+    try {
+      // ✅ Paralel initialization
+      await Future.wait([
+        // Log service
+        logService.initialize(),
+        // Bildirim servisleri
+        _initializeNotificationServicesOptimized(),
+        // Session service
+        _initializeSessionService(),
+      ]);
+
+      logService.info('Tüm servisler başarıyla başlatıldı');
+    } catch (e) {
+      debugPrint('Heavy services initialization error: $e');
+    }
+  });
+
+  // ✅ Hata yakalama daha erken ayarla
+  _setupErrorHandling();
+}
+
+// ✅ Optimized notification services
+Future<void> _initializeNotificationServicesOptimized() async {
   try {
     final notificationService = NotificationService();
     final messagingService = FirebaseMessagingService();
+    final updateNotificationService = UpdateNotificationService();
 
-    await notificationService.initialize();
-    await messagingService.initialize();
+    // ✅ Paralel initialization
+    await Future.wait([
+      notificationService.initialize(),
+      messagingService.initialize(),
+      updateNotificationService.initialize(),
+    ]);
+
+    // ✅ Channel creation ayrı task olarak
     await notificationService.createNotificationChannels();
 
-    // Sosyal bildirimleri ayarla
-    await notificationService.setupSocialNotifications();
+    // ✅ Sosyal bildirimleri daha da gecikme ile ayarla
+    Future.delayed(const Duration(seconds: 5), () async {
+      try {
+        await notificationService.setupSocialNotifications();
+      } catch (e) {
+        debugPrint('Social notifications setup error: $e');
+      }
+    });
   } catch (e) {
-    // Bildirim servisleri başarısız olsa bile uygulama çalışmaya devam etsin
+    debugPrint('Notification services initialization error: $e');
   }
+}
 
-  // Session servisini başlat
+// Session service initialize
+Future<void> _initializeSessionService() async {
   try {
     final sessionService = SessionService();
     await sessionService.setSessionTimeout(2880); // 2 gün
   } catch (e) {
-    // Bildirim servisleri başarısız olsa bile uygulama çalışmaya devam etsin
+    debugPrint('Session service initialization error: $e');
   }
+}
 
-  logService.info('Uygulama başlatıldı');
+// Hata yakalama kurulumu
+void _setupErrorHandling() {
+  final logService = LogService();
 
-  // Hata yakalama
+  // Flutter hata yakalama
   FlutterError.onError = (FlutterErrorDetails details) {
     logService.fatal(
       'Flutter hatası: ${details.exception}',
@@ -78,8 +143,6 @@ void main() async {
     );
     return true;
   };
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
