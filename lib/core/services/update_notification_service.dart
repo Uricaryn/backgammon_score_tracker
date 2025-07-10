@@ -94,12 +94,21 @@ class UpdateNotificationService {
         final bool forceUpdate = data['force_update'] == 'true';
         final String downloadUrl = data['download_url'] ?? '';
 
+        // Create payload with download URL for local notification tap handling
+        final payload = {
+          'type': 'update_notification',
+          'download_url': downloadUrl,
+          'new_version': newVersion,
+          'update_message': updateMessage,
+          'force_update': forceUpdate.toString(),
+        };
+
         // Show local notification
         await _notificationService.showNotification(
           title: '🚀 Yeni Güncelleme Mevcut!',
           body: 'Sürüm $newVersion • $updateMessage',
-          payload: 'update_notification',
-          saveToFirebase: false, // Already from Firebase
+          payload: payload.toString(),
+          saveToFirebase: true, // Save to user's notifications collection
         );
 
         // Save update info for later use

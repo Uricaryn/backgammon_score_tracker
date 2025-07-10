@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 
@@ -176,6 +177,51 @@ class NotificationService {
     }
   }
 
+  // Update notification tap handling
+  void _handleUpdateNotificationTap(String payload) {
+    try {
+      // Parse payload to extract download URL
+      // Look for download_url in the payload string
+      final downloadUrlMatch =
+          RegExp(r'download_url:\s*([^,}]+)').firstMatch(payload);
+
+      if (downloadUrlMatch != null) {
+        final downloadUrl = downloadUrlMatch.group(1)?.trim();
+
+        if (downloadUrl != null &&
+            downloadUrl.isNotEmpty &&
+            downloadUrl != 'null') {
+          _launchDownloadUrl(downloadUrl);
+          debugPrint(
+              'Launching download URL from update notification: $downloadUrl');
+        } else {
+          debugPrint(
+              'Download URL is empty or null in update notification payload');
+        }
+      } else {
+        debugPrint(
+            'No download URL found in update notification payload: $payload');
+      }
+    } catch (e) {
+      debugPrint('Error handling update notification tap: $e');
+    }
+  }
+
+  // Launch download URL
+  Future<void> _launchDownloadUrl(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        debugPrint('Download URL opened: $url');
+      } else {
+        debugPrint('Cannot launch download URL: $url');
+      }
+    } catch (e) {
+      debugPrint('Failed to launch download URL: $e');
+    }
+  }
+
   Future<void> showScheduledNotification({
     required String title,
     required String body,
@@ -245,6 +291,12 @@ class NotificationService {
     // Sosyal bildirimler için Firebase'e kaydet
     if (response.payload == 'social_reminder') {
       _saveSocialNotificationToFirebase(response);
+    }
+
+    // Update notification tap handling
+    if (response.payload != null &&
+        response.payload!.contains('update_notification')) {
+      _handleUpdateNotificationTap(response.payload!);
     }
 
     // Burada bildirime tıklandığında yapılacak işlemler

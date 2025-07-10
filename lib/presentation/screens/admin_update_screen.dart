@@ -41,10 +41,14 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
   bool _isLoading = false;
   List<Map<String, dynamic>> _scheduledNotifications = [];
 
+  // User Management
+  List<Map<String, dynamic>> _users = [];
+  bool _isLoadingUsers = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _verifyAdminAccess();
     _loadScheduledNotifications();
   }
@@ -382,6 +386,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
             Tab(icon: Icon(Icons.system_update), text: 'Güncelleme'),
             Tab(icon: Icon(Icons.notifications), text: 'Genel'),
             Tab(icon: Icon(Icons.schedule), text: 'Zamanlanmış'),
+            Tab(icon: Icon(Icons.people), text: 'Kullanıcılar'),
           ],
         ),
       ),
@@ -392,6 +397,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
             _buildUpdateNotificationTab(),
             _buildGeneralNotificationTab(),
             _buildScheduledNotificationTab(),
+            _buildUserManagementTab(),
           ],
         ),
       ),
@@ -1180,6 +1186,509 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                   ],
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Load users
+  Future<void> _loadUsers() async {
+    setState(() => _isLoadingUsers = true);
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      setState(() {
+        _users = snapshot.docs
+            .map((doc) => {
+                  'id': doc.id,
+                  ...doc.data(),
+                })
+            .toList();
+      });
+    } catch (e) {
+      _showError('Kullanıcılar yüklenemedi: $e');
+    } finally {
+      setState(() => _isLoadingUsers = false);
+    }
+  }
+
+  // Toggle user active status
+  Future<void> _toggleUserStatus(String userId, bool currentStatus) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update({'isActive': !currentStatus});
+
+      _showSuccess('Kullanıcı durumu güncellendi');
+      _loadUsers();
+    } catch (e) {
+      _showError('Kullanıcı durumu güncellenemedi: $e');
+    }
+  }
+
+  // Delete user account
+  Future<void> _deleteUser(String userId, String email) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kullanıcı Hesabını Sil'),
+        content: Text(
+            '$email hesabını silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('İptal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sil', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Delete user document from Firestore
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .delete();
+
+        // Delete user's games
+        final gamesQuery = await FirebaseFirestore.instance
+            .collection('games')
+            .where('userId', isEqualTo: userId)
+            .get();
+
+        for (var doc in gamesQuery.docs) {
+          await doc.reference.delete();
+        }
+
+        // Delete user's players
+        final playersQuery = await FirebaseFirestore.instance
+            .collection('players')
+            .where('userId', isEqualTo: userId)
+            .get();
+
+        for (var doc in playersQuery.docs) {
+          await doc.reference.delete();
+        }
+
+        _showSuccess('Kullanıcı hesabı ve tüm verileri silindi');
+        _loadUsers();
+      } catch (e) {
+        _showError('Kullanıcı silinemedi: $e');
+      }
+    }
+  }
+
+  // Show user details dialog
+  void _showUserDetails(Map<String, dynamic> user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.person),
+            SizedBox(width: 8),
+            Text('Kullanıcı Detayları'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('Email', user['email'] ?? 'N/A'),
+              _buildDetailRow(
+                  'Durum', (user['isActive'] ?? true) ? 'Aktif' : 'Pasif'),
+              _buildDetailRow(
+                  'Admin', (user['isAdmin'] ?? false) ? 'Evet' : 'Hayır'),
+              _buildDetailRow('Beta Kullanıcısı',
+                  (user['isBetaUser'] ?? false) ? 'Evet' : 'Hayır'),
+              _buildDetailRow(
+                  'Oluşturma Tarihi', _formatDate(user['createdAt'])),
+              _buildDetailRow('Son Giriş', _formatDate(user['lastLoginAt'])),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(dynamic timestamp) {
+    if (timestamp == null) return 'N/A';
+    try {
+      final date = timestamp is Timestamp
+          ? timestamp.toDate()
+          : DateTime.parse(timestamp.toString());
+      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  // User Management Tab
+  Widget _buildUserManagementTab() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Card
+            Card(
+              elevation: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [
+                      Theme.of(context).colorScheme.primary,
+                      Theme.of(context).colorScheme.secondary,
+                    ],
+                  ),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.people,
+                      color: Colors.white,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Kullanıcı Yönetimi',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Toplam ${_users.length} kullanıcı',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoadingUsers ? null : _loadUsers,
+                    icon: _isLoadingUsers
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh),
+                    label: const Text('Yenile'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _runUserMigration,
+                    icon: const Icon(Icons.build),
+                    label: const Text('Migration'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Statistics Cards
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Toplam Kullanıcı',
+                    _users.length.toString(),
+                    Icons.people,
+                    Colors.blue,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Aktif Kullanıcı',
+                    _users
+                        .where((u) => u['isActive'] ?? true)
+                        .length
+                        .toString(),
+                    Icons.check_circle,
+                    Colors.green,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Admin Kullanıcı',
+                    _users
+                        .where((u) => u['isAdmin'] ?? false)
+                        .length
+                        .toString(),
+                    Icons.admin_panel_settings,
+                    Colors.purple,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Beta Kullanıcı',
+                    _users
+                        .where((u) => u['isBetaUser'] ?? false)
+                        .length
+                        .toString(),
+                    Icons.science,
+                    Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Users List
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.list,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Kullanıcı Listesi',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (_isLoadingUsers)
+                      const Center(child: CircularProgressIndicator())
+                    else if (_users.isEmpty)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text(
+                            'Kullanıcı bulunamadı\nYenilemek için yukarıdaki butonu kullanın',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _users.length,
+                        itemBuilder: (context, index) {
+                          final user = _users[index];
+                          final isActive = user['isActive'] ?? true;
+                          final isAdmin = user['isAdmin'] ?? false;
+                          final isBeta = user['isBetaUser'] ?? false;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isActive
+                                    ? Colors.green.withOpacity(0.2)
+                                    : Colors.red.withOpacity(0.2),
+                                child: Icon(
+                                  isActive ? Icons.person : Icons.person_off,
+                                  color: isActive ? Colors.green : Colors.red,
+                                ),
+                              ),
+                              title: Text(
+                                user['email'] ?? 'Email not found',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('ID: ${user['id']}'),
+                                  Row(
+                                    children: [
+                                      if (isAdmin)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                Colors.purple.withOpacity(0.2),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: const Text('Admin',
+                                              style: TextStyle(fontSize: 10)),
+                                        ),
+                                      if (isBeta) ...[
+                                        if (isAdmin) const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                Colors.orange.withOpacity(0.2),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: const Text('Beta',
+                                              style: TextStyle(fontSize: 10)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              trailing: PopupMenuButton(
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    onTap: () => Future.delayed(
+                                      Duration.zero,
+                                      () => _showUserDetails(user),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.info),
+                                        SizedBox(width: 8),
+                                        Text('Detaylar'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    onTap: () => Future.delayed(
+                                      Duration.zero,
+                                      () => _toggleUserStatus(
+                                          user['id'], isActive),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(isActive
+                                            ? Icons.block
+                                            : Icons.check_circle),
+                                        const SizedBox(width: 8),
+                                        Text(isActive
+                                            ? 'Pasifleştir'
+                                            : 'Aktifleştir'),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!isAdmin) // Don't allow deleting admin users
+                                    PopupMenuItem(
+                                      onTap: () => Future.delayed(
+                                        Duration.zero,
+                                        () => _deleteUser(
+                                            user['id'], user['email'] ?? ''),
+                                      ),
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.delete, color: Colors.red),
+                                          SizedBox(width: 8),
+                                          Text('Hesabı Sil',
+                                              style:
+                                                  TextStyle(color: Colors.red)),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+      String title, String value, IconData icon, Color color) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 12),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

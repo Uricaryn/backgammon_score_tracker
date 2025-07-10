@@ -6,12 +6,12 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 
 class PlayerMatchHistoryScreen extends StatefulWidget {
   final String player1;
-  final String player2;
+  final String? player2; // Made nullable to support single player view
 
   const PlayerMatchHistoryScreen({
     super.key,
     required this.player1,
-    required this.player2,
+    this.player2, // Now optional
   });
 
   @override
@@ -54,40 +54,85 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
       final player2Score = data['player2Score'] as int;
       final timestamp = (data['timestamp'] as Timestamp).toDate();
 
-      // Check if this match involves both players
-      if ((player1 == widget.player1 && player2 == widget.player2) ||
-          (player1 == widget.player2 && player2 == widget.player1)) {
+      bool isRelevantMatch = false;
+
+      if (widget.player2 == null) {
+        // Single player mode - show all matches involving widget.player1
+        isRelevantMatch =
+            (player1 == widget.player1 || player2 == widget.player1);
+      } else {
+        // Two player mode - show matches between widget.player1 and widget.player2
+        isRelevantMatch =
+            ((player1 == widget.player1 && player2 == widget.player2!) ||
+                (player1 == widget.player2! && player2 == widget.player1));
+      }
+
+      if (isRelevantMatch) {
         totalMatches++;
 
         // Determine winner and update scores
-        if (player1 == widget.player1) {
-          totalPlayer1Score += player1Score;
-          totalPlayer2Score += player2Score;
-          if (player1Score > player2Score) {
-            player1Wins++;
+        if (widget.player2 == null) {
+          // Single player mode
+          if (player1 == widget.player1) {
+            totalPlayer1Score += player1Score;
+            totalPlayer2Score += player2Score;
+            if (player1Score > player2Score) {
+              player1Wins++;
+            } else {
+              player2Wins++;
+            }
+            highestPlayer1Score = player1Score > highestPlayer1Score
+                ? player1Score
+                : highestPlayer1Score;
+            highestPlayer2Score = player2Score > highestPlayer2Score
+                ? player2Score
+                : highestPlayer2Score;
           } else {
-            player2Wins++;
+            totalPlayer1Score += player2Score;
+            totalPlayer2Score += player1Score;
+            if (player2Score > player1Score) {
+              player1Wins++;
+            } else {
+              player2Wins++;
+            }
+            highestPlayer1Score = player2Score > highestPlayer1Score
+                ? player2Score
+                : highestPlayer1Score;
+            highestPlayer2Score = player1Score > highestPlayer2Score
+                ? player1Score
+                : highestPlayer2Score;
           }
-          highestPlayer1Score = player1Score > highestPlayer1Score
-              ? player1Score
-              : highestPlayer1Score;
-          highestPlayer2Score = player2Score > highestPlayer2Score
-              ? player2Score
-              : highestPlayer2Score;
         } else {
-          totalPlayer1Score += player2Score;
-          totalPlayer2Score += player1Score;
-          if (player2Score > player1Score) {
-            player1Wins++;
+          // Two player mode (original logic)
+          if (player1 == widget.player1) {
+            totalPlayer1Score += player1Score;
+            totalPlayer2Score += player2Score;
+            if (player1Score > player2Score) {
+              player1Wins++;
+            } else {
+              player2Wins++;
+            }
+            highestPlayer1Score = player1Score > highestPlayer1Score
+                ? player1Score
+                : highestPlayer1Score;
+            highestPlayer2Score = player2Score > highestPlayer2Score
+                ? player2Score
+                : highestPlayer2Score;
           } else {
-            player2Wins++;
+            totalPlayer1Score += player2Score;
+            totalPlayer2Score += player1Score;
+            if (player2Score > player1Score) {
+              player1Wins++;
+            } else {
+              player2Wins++;
+            }
+            highestPlayer1Score = player2Score > highestPlayer1Score
+                ? player2Score
+                : highestPlayer1Score;
+            highestPlayer2Score = player1Score > highestPlayer2Score
+                ? player1Score
+                : highestPlayer2Score;
           }
-          highestPlayer1Score = player2Score > highestPlayer1Score
-              ? player2Score
-              : highestPlayer1Score;
-          highestPlayer2Score = player1Score > highestPlayer2Score
-              ? player1Score
-              : highestPlayer2Score;
         }
 
         matchHistory.add({
@@ -175,12 +220,41 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
   }
 
   Widget _buildMatchHistoryItem(Map<String, dynamic> match) {
-    final isPlayer1First = match['player1'] == widget.player1;
-    final player1Score =
-        isPlayer1First ? match['player1Score'] : match['player2Score'];
-    final player2Score =
-        isPlayer1First ? match['player2Score'] : match['player1Score'];
+    final matchPlayer1 = match['player1'] as String;
+    final matchPlayer2 = match['player2'] as String;
+    final player1Score = match['player1Score'] as int;
+    final player2Score = match['player2Score'] as int;
     final timestamp = match['timestamp'] as DateTime;
+
+    // For single player mode, determine which player is our focus player
+    String displayPlayer1, displayPlayer2;
+    int displayPlayer1Score, displayPlayer2Score;
+    bool isPlayer1Focus = false;
+
+    if (widget.player2 == null) {
+      // Single player mode - always show focus player first
+      if (matchPlayer1 == widget.player1) {
+        displayPlayer1 = matchPlayer1;
+        displayPlayer2 = matchPlayer2;
+        displayPlayer1Score = player1Score;
+        displayPlayer2Score = player2Score;
+        isPlayer1Focus = true;
+      } else {
+        displayPlayer1 = matchPlayer2;
+        displayPlayer2 = matchPlayer1;
+        displayPlayer1Score = player2Score;
+        displayPlayer2Score = player1Score;
+        isPlayer1Focus = true;
+      }
+    } else {
+      // Two player mode - original logic
+      final isPlayer1First = matchPlayer1 == widget.player1;
+      displayPlayer1 = widget.player1;
+      displayPlayer2 = widget.player2!;
+      displayPlayer1Score = isPlayer1First ? player1Score : player2Score;
+      displayPlayer2Score = isPlayer1First ? player2Score : player1Score;
+      isPlayer1Focus = true;
+    }
 
     return Card(
       elevation: 0,
@@ -210,7 +284,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          widget.player1,
+                          displayPlayer1,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
@@ -226,7 +300,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
-                          player1Score.toString(),
+                          displayPlayer1Score.toString(),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context)
@@ -243,7 +317,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          widget.player2,
+                          displayPlayer2,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.secondary,
@@ -260,7 +334,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
-                          player2Score.toString(),
+                          displayPlayer2Score.toString(),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context)
@@ -292,7 +366,9 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.player1} vs ${widget.player2}'),
+        title: Text(widget.player2 == null
+            ? '${widget.player1} - Tüm Maçları'
+            : '${widget.player1} vs ${widget.player2}'),
       ),
       body: BackgroundBoard(
         child: SafeArea(
@@ -413,13 +489,17 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                                           Theme.of(context).colorScheme.primary,
                                         ),
                                         _buildStatCard(
-                                          '${widget.player1} Kazanma',
+                                          widget.player2 == null
+                                              ? '${widget.player1} Kazanma'
+                                              : '${widget.player1} Kazanma',
                                           player1Wins.toString(),
                                           Icons.emoji_events,
                                           Colors.orange,
                                         ),
                                         _buildStatCard(
-                                          '${widget.player2} Kazanma',
+                                          widget.player2 == null
+                                              ? 'Rakip Kazanma'
+                                              : '${widget.player2} Kazanma',
                                           player2Wins.toString(),
                                           Icons.emoji_events,
                                           Colors.deepPurple,

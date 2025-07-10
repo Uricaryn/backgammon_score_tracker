@@ -11,6 +11,7 @@ import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
+import 'package:backgammon_score_tracker/core/constants/privacy_policy.dart';
 import 'package:backgammon_score_tracker/presentation/screens/admin_update_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -518,6 +519,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return result ?? false;
   }
 
+  // Privacy Policy dialog'unu göster
+  void _showPrivacyPolicy() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Theme.of(context).colorScheme.secondary,
+                      Theme.of(context).colorScheme.secondary.withOpacity(0.8),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.privacy_tip,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Gizlilik Politikası',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    PrivacyPolicy.text,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          height: 1.5,
+                        ),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context).dividerColor,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Kapat'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -535,13 +623,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Profil Bilgileri Kartı
+                // Ana Profil Kartı - Tüm Özellikler Birleştirildi
                 StyledCard(
                   child: Padding(
                     padding: const EdgeInsets.all(20.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Profil Bilgileri Bölümü
                         Row(
                           children: [
                             Container(
@@ -673,20 +762,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
 
-                // Tema Ayarları Kartı
-                StyledCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        // Section Divider
+                        const SizedBox(height: 20),
+                        Divider(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withOpacity(0.3)),
+                        const SizedBox(height: 20),
+
+                        // Tema Ayarları Bölümü
                         Row(
                           children: [
                             Container(
@@ -701,22 +787,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Icon(
                                 Icons.palette,
                                 color: Theme.of(context).colorScheme.primary,
-                                size: 28,
+                                size: 24,
                               ),
                             ),
                             const SizedBox(width: 12),
                             Text(
                               'Tema Ayarları',
                               style: TextStyle(
-                                fontSize: 24,
+                                fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
                         SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
                           title: const Text('Sistem Temasını Kullan'),
                           subtitle: const Text('Otomatik tema değişimi'),
                           value: themeProvider.useSystemTheme,
@@ -725,7 +812,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           },
                         ),
                         if (!themeProvider.useSystemTheme) ...[
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
                           const Text(
                             'Tema Seçimi:',
                             style: TextStyle(fontWeight: FontWeight.bold),
@@ -735,6 +822,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               Expanded(
                                 child: RadioListTile<String>(
+                                  contentPadding: EdgeInsets.zero,
                                   title: const Text('Açık'),
                                   value: 'light',
                                   groupValue: themeProvider.themeMode,
@@ -747,6 +835,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               Expanded(
                                 child: RadioListTile<String>(
+                                  contentPadding: EdgeInsets.zero,
                                   title: const Text('Koyu'),
                                   value: 'dark',
                                   groupValue: themeProvider.themeMode,
@@ -760,20 +849,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ),
                         ],
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
 
-                // Admin Panel Kartı - Sadece gerçek adminlere göster
-                if (!_isAdminLoading && _isAdmin) ...[
-                  StyledCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                        // Admin Panel Bölümü - Sadece adminlere göster
+                        if (!_isAdminLoading && _isAdmin) ...[
+                          const SizedBox(height: 20),
+                          Divider(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outline
+                                  .withOpacity(0.3)),
+                          const SizedBox(height: 20),
                           Row(
                             children: [
                               Container(
@@ -790,14 +875,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: const Icon(
                                   Icons.admin_panel_settings,
                                   color: Colors.white,
-                                  size: 28,
+                                  size: 24,
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Text(
                                 'Admin Panel',
                                 style: TextStyle(
-                                  fontSize: 24,
+                                  fontSize: 20,
                                   fontWeight: FontWeight.bold,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -831,46 +916,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             width: double.infinity,
                             child: FilledButton.icon(
                               onPressed: () async {
-                                // 🔒 Double-check admin access before opening panel
                                 await _verifyAdminAccessAndNavigate();
                               },
                               icon: const Icon(Icons.send),
-                              label: const Text('Güncelleme Bildirimi Gönder'),
+                              label: const Text('Admin Paneli'),
                               style: FilledButton.styleFrom(
                                 backgroundColor:
                                     Theme.of(context).colorScheme.primary,
                                 foregroundColor: Colors.white,
                                 padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
 
-                // Hesap Silme Kartı
-                StyledCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        // Section Divider
+                        const SizedBox(height: 20),
+                        Divider(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withOpacity(0.3)),
+                        const SizedBox(height: 20),
+
+                        // Privacy Policy Bölümü
                         Row(
                           children: [
-                            Icon(
-                              Icons.delete_forever,
-                              color: Theme.of(context).colorScheme.primary,
-                              size: 28,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .secondary
+                                    .withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.privacy_tip,
+                                color: Theme.of(context).colorScheme.secondary,
+                                size: 24,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Text(
-                              'Hesabı Sil',
+                              'Gizlilik Politikası',
                               style: TextStyle(
-                                fontSize: 24,
+                                fontSize: 20,
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
@@ -879,31 +971,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Hesabınızı silmek için aşağıdaki butona tıklayın.',
+                          'Kişisel verilerinizin nasıl toplandığı, kullanıldığı ve korunduğu hakkında bilgi alın.',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _isLoading ? null : _deleteAccount,
-                            icon: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.delete_forever),
-                            label: Text(
-                                _isLoading ? 'Siliniyor...' : 'Hesabımı Sil'),
+                          child: OutlinedButton.icon(
+                            onPressed: _showPrivacyPolicy,
+                            icon: const Icon(Icons.article),
+                            label:
+                                const Text('Gizlilik Politikasını Görüntüle'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
                           ),
+                        ),
+
+                        // Section Divider
+                        const SizedBox(height: 20),
+                        Divider(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withOpacity(0.3)),
+                        const SizedBox(height: 20),
+
+                        // Hesap Silme Bölümü
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.delete_forever,
+                              color: Colors.red,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Hesap Yönetimi',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Hesabınızı kalıcı olarak silmek için aşağıdaki butonu kullanabilirsiniz.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _logout,
+                                icon: const Icon(Icons.logout),
+                                label: const Text('Çıkış Yap'),
+                                style: OutlinedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _isLoading ? null : _deleteAccount,
+                                icon: _isLoading
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white),
+                                      )
+                                    : const Icon(Icons.delete_forever),
+                                label: Text(
+                                    _isLoading ? 'Siliniyor...' : 'Hesabı Sil'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
               ],
             ),
           ),

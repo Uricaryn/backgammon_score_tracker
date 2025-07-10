@@ -649,6 +649,85 @@ class _PlayersScreenState extends State<PlayersScreen> {
             ),
             ListTile(
               leading: Icon(
+                Icons.list_alt,
+                color: _isGuestUser
+                    ? Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withOpacity(0.5)
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              title: Text(
+                'Tüm Maçlarını Görüntüle',
+                style: TextStyle(
+                  color: _isGuestUser
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5)
+                      : null,
+                ),
+              ),
+              subtitle: Text(
+                _isGuestUser
+                    ? 'Giriş yaparak tüm maçları görüntüleyin'
+                    : 'Oyuncunun tüm maçlarını görüntüle',
+                style: TextStyle(
+                  color: _isGuestUser
+                      ? Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5)
+                      : null,
+                ),
+              ),
+              onTap: _isGuestUser
+                  ? () {
+                      Navigator.pop(context);
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Giriş Gerekli'),
+                          content: const Text(
+                            'Tüm maçları görüntülemek için giriş yapmanız gerekiyor',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('İptal'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                print(
+                                    'DEBUG: Tüm Maçlar Giriş Yap butonuna tıklandı');
+                                Navigator.pop(context);
+                                Navigator.pushReplacementNamed(
+                                    context, AppRouter.login,
+                                    arguments: true);
+                              },
+                              child: const Text('Giriş Yap'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  : () {
+                      Navigator.pop(context);
+                      Future.microtask(() {
+                        Navigator.push(
+                          parentContext,
+                          MaterialPageRoute(
+                            builder: (context) => PlayerMatchHistoryScreen(
+                              player1: playerName,
+                              // player2 is null for single player mode
+                            ),
+                          ),
+                        );
+                      });
+                    },
+            ),
+            ListTile(
+              leading: Icon(
                 Icons.edit,
                 color: Theme.of(context).colorScheme.primary,
               ),

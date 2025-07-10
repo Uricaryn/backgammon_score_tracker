@@ -527,6 +527,7 @@ exports.sendGeneralNotification = onCall(async (request) => {
         let totalSent = 0;
         let totalFailed = 0;
         const batchSize = 500;
+        const successfulUserIds = []; // Başarıyla bildirim gönderilen kullanıcılar
 
         for (let i = 0; i < tokens.length; i += batchSize) {
             const tokenBatch = tokens.slice(i, i + batchSize);
@@ -535,6 +536,7 @@ exports.sendGeneralNotification = onCall(async (request) => {
             // Tek tek token'lara gönder (multicast sorunu için)
             for (let j = 0; j < tokenBatch.length; j++) {
                 const token = tokenBatch[j];
+                const userId = userBatch[j];
                 const singleMessage = {
                     ...fcmMessage,
                     token: token
@@ -544,6 +546,7 @@ exports.sendGeneralNotification = onCall(async (request) => {
                     const response = await messaging.send(singleMessage);
                     console.log(`Successfully sent to token ${token}: ${response}`);
                     totalSent++;
+                    successfulUserIds.push(userId); // Başarılı kullanıcıyı kaydet
                 } catch (error) {
                     console.log(`Failed to send to token ${token}: ${error.message}`);
                     totalFailed++;
@@ -551,7 +554,6 @@ exports.sendGeneralNotification = onCall(async (request) => {
                     // Geçersiz token'ı temizle
                     if (error.code === 'messaging/registration-token-not-registered' || 
                         error.code === 'messaging/invalid-registration-token') {
-                        const userId = userBatch[j];
                         if (userId) {
                             try {
                                 await db.collection('users').doc(userId).update({
@@ -568,12 +570,51 @@ exports.sendGeneralNotification = onCall(async (request) => {
             }
         }
 
+        // Her kullanıcının notifications koleksiyonuna bildirim kaydı ekle
+        console.log(`Saving notification records for ${successfulUserIds.length} users...`);
+        let savedNotifications = 0;
+        let failedNotifications = 0;
+
+        // Batch işlemi ile verimli kaydetme
+        const notificationBatchSize = 500;
+        for (let i = 0; i < successfulUserIds.length; i += notificationBatchSize) {
+            const userBatch = successfulUserIds.slice(i, i + notificationBatchSize);
+            
+            // Her kullanıcı için ayrı kayıt oluştur
+            for (const userId of userBatch) {
+                try {
+                    await db.collection('notifications').add({
+                        userId: userId,
+                        title: title,
+                        body: message,
+                        type: 'general',
+                        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                        isRead: false,
+                        data: {
+                            source: 'admin_notification',
+                            notificationId: notificationDoc.id,
+                            targetAudience: targetAudience,
+                            timestamp: new Date().toISOString()
+                        }
+                    });
+                    savedNotifications++;
+                } catch (error) {
+                    console.error(`Failed to save notification for user ${userId}:`, error);
+                    failedNotifications++;
+                }
+            }
+        }
+
+        console.log(`Notification records saved: ${savedNotifications}, failed: ${failedNotifications}`);
+
         // Bildirim durumunu güncelle
         await notificationDoc.update({
             status: 'sent',
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
             totalSent: totalSent,
-            totalFailed: totalFailed
+            totalFailed: totalFailed,
+            savedNotifications: savedNotifications,
+            failedNotifications: failedNotifications
         });
 
         return {
@@ -808,7 +849,9 @@ async function processScheduledNotification(notificationId, data) {
             processed: true,
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
             totalSent: result.totalSent,
-            totalFailed: result.totalFailed
+            totalFailed: result.totalFailed,
+            savedNotifications: result.savedNotifications,
+            failedNotifications: result.failedNotifications
         });
 
         console.log(`Scheduled notification ${notificationId} processed successfully`);
@@ -901,6 +944,7 @@ async function sendScheduledNotificationToUsers(data) {
     let totalSent = 0;
     let totalFailed = 0;
     const batchSize = 500;
+    const successfulUserIds = []; // Başarıyla bildirim gönderilen kullanıcılar
 
     for (let i = 0; i < tokens.length; i += batchSize) {
         const tokenBatch = tokens.slice(i, i + batchSize);
@@ -909,6 +953,7 @@ async function sendScheduledNotificationToUsers(data) {
         // Tek tek token'lara gönder (multicast sorunu için)
         for (let j = 0; j < tokenBatch.length; j++) {
             const token = tokenBatch[j];
+            const userId = userBatch[j];
             const singleMessage = {
                 ...fcmMessage,
                 token: token
@@ -918,6 +963,7 @@ async function sendScheduledNotificationToUsers(data) {
                 const response = await messaging.send(singleMessage);
                 console.log(`Successfully sent to token ${token}: ${response}`);
                 totalSent++;
+                successfulUserIds.push(userId); // Başarılı kullanıcıyı kaydet
             } catch (error) {
                 console.log(`Failed to send to token ${token}: ${error.message}`);
                 totalFailed++;
@@ -925,7 +971,6 @@ async function sendScheduledNotificationToUsers(data) {
                 // Geçersiz token'ı temizle
                 if (error.code === 'messaging/registration-token-not-registered' || 
                     error.code === 'messaging/invalid-registration-token') {
-                    const userId = userBatch[j];
                     if (userId) {
                         try {
                             await db.collection('users').doc(userId).update({
@@ -942,7 +987,48 @@ async function sendScheduledNotificationToUsers(data) {
         }
     }
 
-    return { totalSent, totalFailed };
+    // Her kullanıcının notifications koleksiyonuna bildirim kaydı ekle
+    console.log(`Saving scheduled notification records for ${successfulUserIds.length} users...`);
+    let savedNotifications = 0;
+    let failedNotifications = 0;
+
+    // Batch işlemi ile verimli kaydetme
+    const notificationBatchSize = 500;
+    for (let i = 0; i < successfulUserIds.length; i += notificationBatchSize) {
+        const userBatch = successfulUserIds.slice(i, i + notificationBatchSize);
+        
+        // Her kullanıcı için ayrı kayıt oluştur
+        for (const userId of userBatch) {
+            try {
+                await db.collection('notifications').add({
+                    userId: userId,
+                    title: title,
+                    body: message,
+                    type: 'general',
+                    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                    isRead: false,
+                    data: {
+                        source: 'scheduled_notification',
+                        targetAudience: targetAudience,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+                savedNotifications++;
+            } catch (error) {
+                console.error(`Failed to save scheduled notification for user ${userId}:`, error);
+                failedNotifications++;
+            }
+        }
+    }
+
+    console.log(`Scheduled notification records saved: ${savedNotifications}, failed: ${failedNotifications}`);
+
+    return { 
+        totalSent, 
+        totalFailed, 
+        savedNotifications, 
+        failedNotifications 
+    };
 }
 
 /**

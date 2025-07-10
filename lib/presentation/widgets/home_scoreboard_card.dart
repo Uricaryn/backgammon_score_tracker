@@ -26,6 +26,7 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
   // ✅ Cached player statistics
   Map<String, int>? _cachedPlayerWins;
   Map<String, int>? _cachedPlayerGames;
+  Map<String, double>? _cachedPlayerAverageScores;
 
   @override
   void didUpdateWidget(HomeScoreboardCard oldWidget) {
@@ -38,10 +39,13 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
   void _invalidatePlayerStats() {
     _cachedPlayerWins = null;
     _cachedPlayerGames = null;
+    _cachedPlayerAverageScores = null;
   }
 
   void _calculatePlayerStats() {
-    if (_cachedPlayerWins != null && _cachedPlayerGames != null) {
+    if (_cachedPlayerWins != null &&
+        _cachedPlayerGames != null &&
+        _cachedPlayerAverageScores != null) {
       return; // Use cached data
     }
 
@@ -50,6 +54,10 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
     final games = widget.cachedGameData!['data'] as List<Map<String, dynamic>>;
     _cachedPlayerWins = {};
     _cachedPlayerGames = {};
+    _cachedPlayerAverageScores = {};
+
+    // Temporary storage for total scores to calculate averages
+    Map<String, int> playerTotalScores = {};
 
     for (var data in games) {
       final player1 = data['player1'] as String;
@@ -57,14 +65,29 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
       final player1Score = data['player1Score'] as int;
       final player2Score = data['player2Score'] as int;
 
+      // Update game counts
       _cachedPlayerGames![player1] = (_cachedPlayerGames![player1] ?? 0) + 1;
       _cachedPlayerGames![player2] = (_cachedPlayerGames![player2] ?? 0) + 1;
 
+      // Update total scores for average calculation
+      playerTotalScores[player1] =
+          (playerTotalScores[player1] ?? 0) + player1Score;
+      playerTotalScores[player2] =
+          (playerTotalScores[player2] ?? 0) + player2Score;
+
+      // Update win counts
       if (player1Score > player2Score) {
         _cachedPlayerWins![player1] = (_cachedPlayerWins![player1] ?? 0) + 1;
       } else {
         _cachedPlayerWins![player2] = (_cachedPlayerWins![player2] ?? 0) + 1;
       }
+    }
+
+    // Calculate average scores
+    for (var playerName in _cachedPlayerGames!.keys) {
+      final totalScore = playerTotalScores[playerName] ?? 0;
+      final totalGames = _cachedPlayerGames![playerName] ?? 1;
+      _cachedPlayerAverageScores![playerName] = totalScore / totalGames;
     }
   }
 
@@ -175,7 +198,18 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
               (_cachedPlayerGames![a.key] ?? 1);
           final bWinRate = (_cachedPlayerWins![b.key] ?? 0) /
               (_cachedPlayerGames![b.key] ?? 1);
-          return bWinRate.compareTo(aWinRate);
+
+          // Primary sort: Win rate (higher is better)
+          final winRateComparison = bWinRate.compareTo(aWinRate);
+
+          // If win rates are equal, sort by average score (higher is better)
+          if (winRateComparison == 0) {
+            final aAvgScore = _cachedPlayerAverageScores![a.key] ?? 0.0;
+            final bAvgScore = _cachedPlayerAverageScores![b.key] ?? 0.0;
+            return bAvgScore.compareTo(aAvgScore);
+          }
+
+          return winRateComparison;
         });
 
       return Column(
@@ -186,6 +220,8 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
               player: sortedPlayers[i],
               index: i,
               totalGames: _cachedPlayerGames![sortedPlayers[i].key] ?? 0,
+              averageScore:
+                  _cachedPlayerAverageScores![sortedPlayers[i].key] ?? 0.0,
               isGuestUser: widget.isGuestUser,
             ),
         ],
@@ -223,12 +259,14 @@ class _ScoreboardItem extends StatelessWidget {
   final MapEntry<String, int> player;
   final int index;
   final int totalGames;
+  final double averageScore;
   final bool isGuestUser;
 
   const _ScoreboardItem({
     required this.player,
     required this.index,
     required this.totalGames,
+    required this.averageScore,
     required this.isGuestUser,
   });
 
@@ -285,7 +323,7 @@ class _ScoreboardItem extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Kazanma: ${player.value} / $totalGames',
+                      'Kazanma: ${player.value} / $totalGames • Ort. Skor: ${averageScore.toStringAsFixed(1)}',
                       style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
