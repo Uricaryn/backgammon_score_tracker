@@ -5,6 +5,9 @@ import 'package:backgammon_score_tracker/presentation/screens/new_game_screen.da
 import 'package:backgammon_score_tracker/presentation/screens/statistics_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/splash_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/notifications_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/match_history_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/friends_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 
 class AppRouter {
@@ -14,6 +17,11 @@ class AppRouter {
   static const String newGame = '/new-game';
   static const String statistics = '/statistics';
   static const String notifications = '/notifications';
+  static const String scoreboard = '/scoreboard';
+  static const String matchHistory = '/match-history';
+  static const String tournaments = '/tournaments';
+  static const String friends = '/friends';
+  static const String friendDetail = '/friend-detail';
 
   // İstatistik sayfaları listesi
   static const List<String> _statisticsRoutes = [
@@ -87,6 +95,12 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const StatisticsScreen());
       case notifications:
         return MaterialPageRoute(builder: (_) => const NotificationsScreen());
+      case matchHistory:
+        return MaterialPageRoute(builder: (_) => const MatchHistoryScreen());
+      case friends:
+        return MaterialPageRoute(builder: (_) => const FriendsScreen());
+      case tournaments:
+        return MaterialPageRoute(builder: (_) => const TournamentsScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
