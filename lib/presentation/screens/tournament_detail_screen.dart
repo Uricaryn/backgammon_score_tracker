@@ -29,7 +29,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -86,6 +86,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
             Tab(icon: Icon(Icons.leaderboard), text: 'Scoreboard'),
             Tab(icon: Icon(Icons.sports_esports), text: 'Maçlar'),
             Tab(icon: Icon(Icons.history), text: 'Geçmiş'),
+            Tab(icon: Icon(Icons.chat), text: 'Mesajlar'),
           ],
         ),
       ),
@@ -96,6 +97,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
             _buildScoreboardTab(),
             _buildMatchesTab(),
             _buildHistoryTab(),
+            _buildMessagesTab(),
           ],
         ),
       ),
@@ -894,6 +896,162 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
           ),
         );
       }
+    }
+  }
+
+  Widget _buildMessagesTab() {
+    final user = FirebaseAuth.instance.currentUser;
+    final tournamentId = widget.tournament['id'];
+    final messagesRef = FirebaseFirestore.instance
+        .collection('tournaments')
+        .doc(tournamentId)
+        .collection('messages')
+        .orderBy('timestamp', descending: false);
+    final TextEditingController _messageController = TextEditingController();
+    return Column(
+      children: [
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: messagesRef.snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Hata: ${snapshot.error}'));
+              }
+              final docs = snapshot.data?.docs ?? [];
+              if (docs.isEmpty) {
+                return const Center(child: Text('Henüz mesaj yok.'));
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final data = docs[index].data() as Map<String, dynamic>;
+                  final isMe = data['userId'] == user?.uid;
+                  return Align(
+                    alignment:
+                        isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isMe
+                            ? Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withOpacity(0.15)
+                            : Theme.of(context)
+                                .colorScheme
+                                .surfaceVariant
+                                .withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: isMe
+                            ? CrossAxisAlignment.end
+                            : CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data['username'] ?? 'Kullanıcı',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isMe
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurface,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            data['message'] ?? '',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatChatTimestamp(data['timestamp']),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  decoration: const InputDecoration(hintText: 'Mesaj yaz...'),
+                  onSubmitted: (_) =>
+                      _sendMessage(_messageController, user, tournamentId),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: () =>
+                    _sendMessage(_messageController, user, tournamentId),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _sendMessage(
+      TextEditingController controller, User? user, String tournamentId) async {
+    final text = controller.text.trim();
+    if (text.isEmpty || user == null) return;
+    // Kullanıcı adını çek
+    String username = user.displayName ?? '';
+    if (username.isEmpty) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      username = userDoc.data()?['username'] ?? 'Kullanıcı';
+    }
+    await FirebaseFirestore.instance
+        .collection('tournaments')
+        .doc(tournamentId)
+        .collection('messages')
+        .add({
+      'userId': user.uid,
+      'username': username,
+      'message': text,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    controller.clear();
+  }
+
+  String _formatChatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '';
+    try {
+      final date = (timestamp is Timestamp)
+          ? timestamp.toDate()
+          : (timestamp is DateTime)
+              ? timestamp
+              : DateTime.tryParse(timestamp.toString()) ?? DateTime.now();
+      final now = DateTime.now();
+      if (now.difference(date).inDays == 0) {
+        return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      } else {
+        return '${date.day}/${date.month}/${date.year}';
+      }
+    } catch (e) {
+      return '';
     }
   }
 }
