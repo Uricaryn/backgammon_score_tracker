@@ -9,6 +9,7 @@ import 'package:backgammon_score_tracker/presentation/screens/match_history_scre
 import 'package:backgammon_score_tracker/presentation/screens/friends_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/friend_detail_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/scoreboard_screen.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 
 class AppRouter {
@@ -96,6 +97,8 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const StatisticsScreen());
       case notifications:
         return MaterialPageRoute(builder: (_) => const NotificationsScreen());
+      case scoreboard:
+        return MaterialPageRoute(builder: (_) => const ScoreboardScreen());
       case matchHistory:
         return MaterialPageRoute(builder: (_) => const MatchHistoryScreen());
       case friends:

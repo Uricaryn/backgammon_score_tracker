@@ -583,6 +583,16 @@ exports.sendGeneralNotification = onCall(async (request) => {
             // Her kullanıcı için ayrı kayıt oluştur
             for (const userId of userBatch) {
                 try {
+                    // Duplicate kontrolü: aynı userId ve notificationId ile kayıt var mı?
+                    const existing = await db.collection('notifications')
+                        .where('userId', '==', userId)
+                        .where('data.notificationId', '==', notificationDoc.id)
+                        .limit(1)
+                        .get();
+                    if (!existing.empty) {
+                        console.log(`Duplicate notification for user ${userId} and notificationId ${notificationDoc.id}, skipping.`);
+                        continue;
+                    }
                     await db.collection('notifications').add({
                         userId: userId,
                         title: title,

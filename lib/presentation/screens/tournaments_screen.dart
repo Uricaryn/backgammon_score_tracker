@@ -112,21 +112,24 @@ class _TournamentsScreenState extends State<TournamentsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Turnuvalar'),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          unselectedLabelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          indicatorSize: TabBarIndicatorSize.tab,
-          dividerColor: Colors.transparent,
-          tabs: const [
-            Tab(icon: Icon(Icons.person), text: 'Kişisel'),
-            Tab(icon: Icon(Icons.group), text: 'Sosyal'),
-            Tab(icon: Icon(Icons.mail), text: 'Davetler'),
-            Tab(icon: Icon(Icons.add), text: 'Oluştur'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight),
+          child: Center(
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(icon: Icon(Icons.person), text: 'Kişisel'),
+                Tab(icon: Icon(Icons.group), text: 'Sosyal'),
+                Tab(icon: Icon(Icons.mail), text: 'Davetler'),
+                Tab(icon: Icon(Icons.add), text: 'Oluştur'),
+              ],
+            ),
+          ),
         ),
       ),
       body: BackgroundBoard(

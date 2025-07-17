@@ -194,21 +194,26 @@ class _FriendsScreenState extends State<FriendsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Arkadaşlar'),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          unselectedLabelStyle:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          indicatorSize: TabBarIndicatorSize.tab,
-          dividerColor: Colors.transparent,
-          tabs: const [
-            Tab(icon: Icon(Icons.people), text: 'Arkadaşlar'),
-            Tab(icon: Icon(Icons.timeline), text: 'Aktivite'),
-            Tab(icon: Icon(Icons.person_add), text: 'İstekler'),
-            Tab(icon: Icon(Icons.search), text: 'Arama'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight),
+          child: Center(
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              labelStyle:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              unselectedLabelStyle:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(icon: Icon(Icons.people), text: 'Arkadaşlar'),
+                Tab(icon: Icon(Icons.timeline), text: 'Aktivite'),
+                Tab(icon: Icon(Icons.person_add), text: 'İstekler'),
+                Tab(icon: Icon(Icons.search), text: 'Arama'),
+              ],
+            ),
+          ),
         ),
       ),
       body: BackgroundBoard(
