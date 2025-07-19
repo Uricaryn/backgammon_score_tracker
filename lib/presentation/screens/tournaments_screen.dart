@@ -115,19 +115,30 @@ class _TournamentsScreenState extends State<TournamentsScreen>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight),
           child: Center(
-            child: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              tabs: const [
-                Tab(icon: Icon(Icons.person), text: 'Kişisel'),
-                Tab(icon: Icon(Icons.group), text: 'Sosyal'),
-                Tab(icon: Icon(Icons.mail), text: 'Davetler'),
-                Tab(icon: Icon(Icons.add), text: 'Oluştur'),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Ekran genişliğine göre scroll edilebilirliği ayarla
+                final screenWidth = MediaQuery.of(context).size.width;
+                final isScrollable =
+                    screenWidth < 600; // 600px altında scroll et
+
+                return TabBar(
+                  controller: _tabController,
+                  isScrollable: isScrollable,
+                  labelStyle: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                  unselectedLabelStyle: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  tabs: const [
+                    Tab(icon: Icon(Icons.person), text: 'Kişisel'),
+                    Tab(icon: Icon(Icons.group), text: 'Sosyal'),
+                    Tab(icon: Icon(Icons.mail), text: 'Davetler'),
+                    Tab(icon: Icon(Icons.add), text: 'Oluştur'),
+                  ],
+                );
+              },
             ),
           ),
         ),

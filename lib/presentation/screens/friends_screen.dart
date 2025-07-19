@@ -197,21 +197,30 @@ class _FriendsScreenState extends State<FriendsScreen>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight),
           child: Center(
-            child: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              labelStyle:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              unselectedLabelStyle:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              tabs: const [
-                Tab(icon: Icon(Icons.people), text: 'Arkadaşlar'),
-                Tab(icon: Icon(Icons.timeline), text: 'Aktivite'),
-                Tab(icon: Icon(Icons.person_add), text: 'İstekler'),
-                Tab(icon: Icon(Icons.search), text: 'Arama'),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Ekran genişliğine göre scroll edilebilirliği ayarla
+                final screenWidth = MediaQuery.of(context).size.width;
+                final isScrollable =
+                    screenWidth < 600; // 600px altında scroll et
+
+                return TabBar(
+                  controller: _tabController,
+                  isScrollable: isScrollable,
+                  labelStyle: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                  unselectedLabelStyle: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  tabs: const [
+                    Tab(icon: Icon(Icons.people), text: 'Arkadaşlar'),
+                    Tab(icon: Icon(Icons.timeline), text: 'Aktivite'),
+                    Tab(icon: Icon(Icons.person_add), text: 'İstekler'),
+                    Tab(icon: Icon(Icons.search), text: 'Arama'),
+                  ],
+                );
+              },
             ),
           ),
         ),

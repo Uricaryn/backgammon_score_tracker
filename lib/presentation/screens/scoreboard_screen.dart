@@ -6,6 +6,9 @@ import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 class ScoreboardScreen extends StatefulWidget {
   const ScoreboardScreen({super.key});
@@ -59,10 +62,31 @@ class _ScoreboardScreenState extends State<ScoreboardScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  void _shareScoreboard() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Skor tablosu paylaşıldı!')),
-    );
+  void _shareScoreboard() async {
+    try {
+      // Ekran görüntüsü al
+      final image = await _screenshotController.capture();
+      if (image != null) {
+        // Geçici dosya oluştur
+        final tempDir = await getTemporaryDirectory();
+        final file = await File('${tempDir.path}/scoreboard.png').create();
+        await file.writeAsBytes(image);
+
+        // Paylaş
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Tavla Skor Tablosu',
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ekran görüntüsü alınamadı')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Paylaşım hatası: $e')),
+      );
+    }
   }
 
   @override
@@ -75,7 +99,7 @@ class _ScoreboardScreenState extends State<ScoreboardScreen> {
         child: SafeArea(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
-              : Padding(
+              : SingleChildScrollView(
                   padding: const EdgeInsets.all(16.0),
                   child: HomeScoreboardCard(
                     cachedGameData: _cachedGameData,
