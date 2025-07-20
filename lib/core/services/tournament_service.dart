@@ -3,12 +3,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/services/friendship_service.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
 class TournamentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final LogService _logService = LogService();
   final FriendshipService _friendshipService = FriendshipService();
+  final PremiumService _premiumService = PremiumService();
 
   // Tournament durumları
   static const String tournamentPending = 'pending';
@@ -116,6 +118,15 @@ class TournamentService {
       });
 
       if (category == tournamentCategorySocial) {
+        // Sosyal turnuva için premium kontrolü
+        // TEMPORARY: Premium system disabled - allow all social tournaments
+        // final canCreateSocial =
+        //     await _premiumService.canCreateSocialTournament();
+        // if (!canCreateSocial) {
+        //   throw Exception(
+        //       'PREMIUM_REQUIRED:Sosyal turnuva oluşturmak için Premium\'a yükseltmeniz gerekiyor.');
+        // }
+
         // Yaratıcıyı katılımcı olarak ekle
         await _addParticipant(
             tournamentRef.id, currentUser.uid, participantAccepted);

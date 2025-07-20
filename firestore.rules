@@ -1,73 +1,45 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Helper function to check if user owns the document
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-    
-    // Helper function to check if user is admin
-    function isAdmin() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
-    }
-
-    // Games collection rules
-    match /games/{gameId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
-      allow update, delete: if isAuthenticated() && isOwner(resource.data.userId);
-    }
-
-    // Players collection rules
-    match /players/{playerId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
-      allow update, delete: if isAuthenticated() && isOwner(resource.data.userId);
-    }
-
-    // Users collection rules
+    // Kullanıcılar sadece kendi verilerini okuyabilir
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow delete: if isAuthenticated() && isOwner(userId); // Kullanıcı kendi dokümanını silebilir
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Premium durumu sadece server tarafından değiştirilebilir
+      allow update: if request.auth != null && 
+        request.auth.uid == userId && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPremium', 'premiumExpiryDate', 'premiumDays', 'purchaseVerified']);
     }
-
-    // Notifications collection rules
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
-      allow update: if isAuthenticated() && isOwner(resource.data.userId);
-      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    
+    // Satın alma geçmişi sadece okunabilir
+    match /purchase_history/{purchaseId} {
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      allow write: if false; // Sadece server yazabilir
     }
-
-    // Notification requests collection rules (for future push notifications)
-    match /notification_requests/{requestId} {
-      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
-      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
-      allow update: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
-      allow delete: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+    
+    // Diğer koleksiyonlar için güvenlik
+    match /matches/{matchId} {
+      allow read, write: if request.auth != null && 
+        (resource.data.player1 == request.auth.uid || 
+         resource.data.player2 == request.auth.uid);
     }
-
-    // Admin notifications collection rules - ONLY for admin users
-    match /admin_notifications/{notificationId} {
-      allow read, write: if isAdmin();
+    
+    match /tournaments/{tournamentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        resource.data.createdBy == request.auth.uid;
     }
-
-    // General notifications collection rules - ONLY for admin users
-    match /general_notifications/{notificationId} {
-      allow read, write: if isAdmin();
+    
+    match /friends/{friendshipId} {
+      allow read, write: if request.auth != null && 
+        (resource.data.userId == request.auth.uid || 
+         resource.data.friendId == request.auth.uid);
     }
-
-    // Scheduled notifications collection rules - ONLY for admin users
-    match /scheduled_notifications/{notificationId} {
-      allow read, write: if isAdmin();
+    
+    // Premium özellikler için kontrol
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 } 

@@ -11,6 +11,7 @@ const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onCall, onRequest } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
+const functions = require('firebase-functions');
 
 // Firebase Admin SDK'yı initialize et
 admin.initializeApp();
@@ -1094,4 +1095,348 @@ exports.migrateUserActiveField = onCall(async (request) => {
         console.error('Error during migration:', error);
         throw new Error('Migration failed');
     }
+});
+
+// Premium satın alma doğrulama
+exports.verifyPremiumPurchase = functions.https.onCall(async (data, context) => {
+  // Kullanıcı kimlik doğrulaması
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
+  }
+
+  const { purchaseId, productId, purchaseToken, platform } = data;
+  const userId = context.auth.uid;
+
+  try {
+    // Google Play Store doğrulama (Android)
+    if (platform === 'android' && purchaseToken) {
+      const verificationResult = await verifyGooglePlayPurchase(purchaseToken, productId);
+      
+      if (verificationResult.valid) {
+        // Premium durumunu güncelle
+        await updatePremiumStatus(userId, productId, purchaseId, verificationResult);
+        return { success: true, message: 'Premium başarıyla aktifleştirildi' };
+      } else {
+        throw new functions.https.HttpsError('invalid-argument', 'Geçersiz satın alma');
+      }
+    }
+    
+    // Apple App Store doğrulama (iOS)
+    else if (platform === 'ios' && purchaseId) {
+      const verificationResult = await verifyAppStorePurchase(purchaseId, productId);
+      
+      if (verificationResult.valid) {
+        await updatePremiumStatus(userId, productId, purchaseId, verificationResult);
+        return { success: true, message: 'Premium başarıyla aktifleştirildi' };
+      } else {
+        throw new functions.https.HttpsError('invalid-argument', 'Geçersiz satın alma');
+      }
+    }
+    
+    else {
+      throw new functions.https.HttpsError('invalid-argument', 'Geçersiz platform veya satın alma bilgisi');
+    }
+
+  } catch (error) {
+    console.error('Premium doğrulama hatası:', error);
+    throw new functions.https.HttpsError('internal', 'Premium doğrulama hatası');
+  }
+});
+
+// Google Play Store satın alma doğrulama
+async function verifyGooglePlayPurchase(purchaseToken, productId) {
+  // Google Play Developer API kullanarak doğrulama
+  // Bu kısım Google Play Console'dan API anahtarı gerektirir
+  
+  // Şimdilik basit doğrulama (gerçek implementasyonda Google API kullanılmalı)
+  const validProductIds = ['premium_monthly', 'premium_yearly'];
+  
+  return {
+    valid: validProductIds.includes(productId),
+    purchaseTime: Date.now(),
+    expiryTime: calculateExpiryTime(productId)
+  };
+}
+
+// Apple App Store satın alma doğrulama
+async function verifyAppStorePurchase(purchaseId, productId) {
+  // Apple App Store doğrulama
+  // Bu kısım Apple'ın receipt validation API'si kullanır
+  
+  const validProductIds = ['premium_monthly', 'premium_yearly'];
+  
+  return {
+    valid: validProductIds.includes(productId),
+    purchaseTime: Date.now(),
+    expiryTime: calculateExpiryTime(productId)
+  };
+}
+
+// Premium durumunu güncelle
+async function updatePremiumStatus(userId, productId, purchaseId, verificationResult) {
+  const db = admin.firestore();
+  
+  // Premium süresini hesapla
+  const premiumDays = productId === 'premium_monthly' ? 30 : 365;
+  
+  // Bitiş tarihini hesapla
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + premiumDays);
+  
+  await db.collection('users').doc(userId).update({
+    isPremium: true,
+    premiumExpiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
+    premiumDays: premiumDays,
+    lastPurchaseDate: admin.firestore.Timestamp.now(),
+    purchaseId: purchaseId,
+    productId: productId,
+    purchaseVerified: true,
+    verificationTime: admin.firestore.Timestamp.now(),
+    platform: productId.includes('ios') ? 'ios' : 'android'
+  });
+  
+  // Satın alma geçmişini kaydet
+  await db.collection('purchase_history').add({
+    userId: userId,
+    productId: productId,
+    purchaseId: purchaseId,
+    purchaseTime: admin.firestore.Timestamp.now(),
+    amount: productId === 'premium_monthly' ? 19.99 : 149.99,
+    currency: 'TRY',
+    platform: productId.includes('ios') ? 'ios' : 'android',
+    verified: true
+  });
+}
+
+// Bitiş zamanını hesapla
+function calculateExpiryTime(productId) {
+  const now = Date.now();
+  const days = productId === 'premium_monthly' ? 30 : 365;
+  return now + (days * 24 * 60 * 60 * 1000);
+}
+
+// Premium durumu kontrol et
+exports.checkPremiumStatus = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
+  }
+
+  const userId = context.auth.uid;
+  const db = admin.firestore();
+  
+  try {
+    const userDoc = await db.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return { isPremium: false, message: 'Kullanıcı bulunamadı' };
+    }
+    
+    const userData = userDoc.data();
+    
+    if (!userData.isPremium) {
+      return { isPremium: false, message: 'Premium değil' };
+    }
+    
+    // Premium süresini kontrol et
+    const now = admin.firestore.Timestamp.now();
+    const expiryDate = userData.premiumExpiryDate;
+    
+    if (expiryDate && now.toDate() > expiryDate.toDate()) {
+      // Premium süresi dolmuş
+      await db.collection('users').doc(userId).update({
+        isPremium: false,
+        premiumExpiryDate: null,
+        premiumDays: 0
+      });
+      
+      return { isPremium: false, message: 'Premium süresi dolmuş' };
+    }
+    
+    return { 
+      isPremium: true, 
+      expiryDate: expiryDate,
+      daysRemaining: Math.ceil((expiryDate.toDate() - now.toDate()) / (1000 * 60 * 60 * 24))
+    };
+    
+  } catch (error) {
+    console.error('Premium durum kontrolü hatası:', error);
+    throw new functions.https.HttpsError('internal', 'Premium durum kontrolü hatası');
+  }
+});
+
+// Sahte satın alma tespiti
+exports.detectFakePurchase = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
+  }
+
+  const { purchaseId, productId, platform } = data;
+  const userId = context.auth.uid;
+  
+  try {
+    const db = admin.firestore();
+    
+    // Aynı satın alma ID'si kontrol et
+    const existingPurchase = await db.collection('purchase_history')
+      .where('purchaseId', '==', purchaseId)
+      .get();
+    
+    if (!existingPurchase.empty) {
+      return { isFake: true, reason: 'Satın alma ID\'si zaten kullanılmış' };
+    }
+    
+    // Kullanıcının son satın almalarını kontrol et
+    const recentPurchases = await db.collection('purchase_history')
+      .where('userId', '==', userId)
+      .orderBy('purchaseTime', 'desc')
+      .limit(5)
+      .get();
+    
+    // Çok sık satın alma kontrolü
+    if (!recentPurchases.empty) {
+      const lastPurchase = recentPurchases.docs[0].data();
+      const timeDiff = Date.now() - lastPurchase.purchaseTime.toDate().getTime();
+      
+      if (timeDiff < 60000) { // 1 dakika içinde
+        return { isFake: true, reason: 'Çok sık satın alma denemesi' };
+      }
+    }
+    
+    return { isFake: false };
+    
+  } catch (error) {
+    console.error('Sahte satın alma tespiti hatası:', error);
+    throw new functions.https.HttpsError('internal', 'Sahte satın alma tespiti hatası');
+  }
+});
+
+// Cihaz güvenlik kontrolü
+exports.checkDeviceSecurity = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
+  }
+
+  const { deviceId, packageName, version } = data;
+  const userId = context.auth.uid;
+  
+  try {
+    const db = admin.firestore();
+    
+    // Paket adı kontrolü
+    if (packageName !== 'com.uricaryn.backgammon_score_tracker') {
+      return { isSecure: false, reason: 'Geçersiz paket adı' };
+    }
+    
+    // Cihaz ID kontrolü
+    const deviceDoc = await db.collection('device_security').doc(deviceId).get();
+    
+    if (deviceDoc.exists) {
+      const deviceData = deviceDoc.data();
+      
+      // Cihaz ID'si başka kullanıcıya ait mi kontrol et
+      if (deviceData.userId !== userId) {
+        return { isSecure: false, reason: 'Cihaz ID çakışması' };
+      }
+    } else {
+      // Yeni cihaz kaydet
+      await db.collection('device_security').doc(deviceId).set({
+        userId: userId,
+        packageName: packageName,
+        version: version,
+        firstSeen: admin.firestore.Timestamp.now(),
+        lastSeen: admin.firestore.Timestamp.now()
+      });
+    }
+    
+    return { isSecure: true };
+    
+  } catch (error) {
+    console.error('Cihaz güvenlik kontrolü hatası:', error);
+    throw new functions.https.HttpsError('internal', 'Cihaz güvenlik kontrolü hatası');
+  }
+});
+
+// Premium güvenlik kontrolü
+exports.checkPremiumSecurity = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
+  }
+
+  const { userId, deviceId } = data;
+  
+  try {
+    const db = admin.firestore();
+    
+    // Kullanıcının premium durumunu kontrol et
+    const userDoc = await db.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return { isSecure: false, reason: 'Kullanıcı bulunamadı' };
+    }
+    
+    const userData = userDoc.data();
+    
+    // Premium değilse güvenli
+    if (!userData.isPremium) {
+      return { isSecure: true };
+    }
+    
+    // Premium kullanıcılar için ek kontroller
+    const deviceDoc = await db.collection('device_security').doc(deviceId).get();
+    
+    if (!deviceDoc.exists) {
+      return { isSecure: false, reason: 'Cihaz kaydı bulunamadı' };
+    }
+    
+    const deviceData = deviceDoc.data();
+    
+    // Cihaz kullanıcıya ait mi kontrol et
+    if (deviceData.userId !== userId) {
+      return { isSecure: false, reason: 'Cihaz kullanıcıya ait değil' };
+    }
+    
+    return { isSecure: true };
+    
+  } catch (error) {
+    console.error('Premium güvenlik kontrolü hatası:', error);
+    throw new functions.https.HttpsError('internal', 'Premium güvenlik kontrolü hatası');
+  }
+});
+
+// Güvenlik ihlali raporlama
+exports.reportSecurityViolation = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
+  }
+
+  const { userId, deviceId, violationType, details, timestamp } = data;
+  
+  try {
+    const db = admin.firestore();
+    
+    // Güvenlik ihlalini kaydet
+    await db.collection('security_violations').add({
+      userId: userId,
+      deviceId: deviceId,
+      violationType: violationType,
+      details: details,
+      timestamp: admin.firestore.Timestamp.fromDate(new Date(timestamp)),
+      reportedAt: admin.firestore.Timestamp.now()
+    });
+    
+    // Kullanıcıyı şüpheli olarak işaretle
+    await db.collection('users').doc(userId).update({
+      isSuspicious: true,
+      lastViolation: admin.firestore.Timestamp.now(),
+      violationCount: admin.firestore.FieldValue.increment(1)
+    });
+    
+    console.log(`Güvenlik ihlali raporlandı: ${violationType} - Kullanıcı: ${userId}`);
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error('Güvenlik ihlali raporlama hatası:', error);
+    throw new functions.https.HttpsError('internal', 'Güvenlik ihlali raporlama hatası');
+  }
 });

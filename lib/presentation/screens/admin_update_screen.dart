@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 
 class AdminUpdateScreen extends StatefulWidget {
@@ -44,11 +45,12 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
   // User Management
   List<Map<String, dynamic>> _users = [];
   bool _isLoadingUsers = false;
+  final PremiumService _premiumService = PremiumService();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this); // 5 tab'a çıkar
     _verifyAdminAccess();
     _loadScheduledNotifications();
   }
@@ -387,6 +389,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
             Tab(icon: Icon(Icons.notifications), text: 'Genel'),
             Tab(icon: Icon(Icons.schedule), text: 'Zamanlanmış'),
             Tab(icon: Icon(Icons.people), text: 'Kullanıcılar'),
+            Tab(icon: Icon(Icons.star), text: 'Premium'),
           ],
         ),
       ),
@@ -398,6 +401,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
             _buildGeneralNotificationTab(),
             _buildScheduledNotificationTab(),
             _buildUserManagementTab(),
+            _buildPremiumManagementTab(),
           ],
         ),
       ),
@@ -1694,5 +1698,348 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
         ),
       ),
     );
+  }
+
+  // Premium Management Tab
+  Widget _buildPremiumManagementTab() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header Card
+            Card(
+              elevation: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.amber[700]!,
+                      Colors.amber[500]!,
+                    ],
+                  ),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.star,
+                      color: Colors.white,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Premium Kullanıcı Yönetimi',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Admin Paneli',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Premium Features Info
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Premium Özellikler',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPremiumFeatureItem('Sınırsız arkadaş ekleme'),
+                    _buildPremiumFeatureItem('Sosyal turnuva oluşturma'),
+                    _buildPremiumFeatureItem('Öncelikli destek'),
+                    _buildPremiumFeatureItem('Reklamsız deneyim'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Premium User Management
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.people,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Premium Kullanıcı Yönetimi',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Kullanıcıların premium durumunu yönetmek için önce kullanıcı listesini yükleyin.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoadingUsers ? null : _loadUsers,
+                        icon: const Icon(Icons.refresh),
+                        label: Text(_isLoadingUsers
+                            ? 'Yükleniyor...'
+                            : 'Kullanıcıları Yükle'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Premium Users List
+            if (_users.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.star,
+                            color: Colors.amber[700],
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Premium Kullanıcılar',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _users.length,
+                        itemBuilder: (context, index) {
+                          final user = _users[index];
+                          final isPremium = user['isPremium'] ?? false;
+                          final premiumExpiry = user['premiumExpiry'];
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isPremium
+                                    ? Colors.amber.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.2),
+                                child: Icon(
+                                  isPremium ? Icons.star : Icons.star_border,
+                                  color: isPremium
+                                      ? Colors.amber[700]
+                                      : Colors.grey,
+                                ),
+                              ),
+                              title: Text(
+                                user['email'] ?? 'Email not found',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('ID: ${user['id']}'),
+                                  if (isPremium && premiumExpiry != null)
+                                    Text(
+                                      'Premium Bitiş: ${_formatPremiumDate(premiumExpiry)}',
+                                      style: TextStyle(
+                                        color: _isExpired(premiumExpiry)
+                                            ? Colors.red
+                                            : Colors.green,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              trailing: PopupMenuButton(
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    onTap: () => Future.delayed(
+                                      Duration.zero,
+                                      () => _showPremiumUserDetails(user),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.info),
+                                        SizedBox(width: 8),
+                                        Text('Detaylar'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    onTap: () => Future.delayed(
+                                      Duration.zero,
+                                      () => _togglePremiumStatus(
+                                          user['id'], isPremium),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(isPremium
+                                            ? Icons.star_border
+                                            : Icons.star),
+                                        const SizedBox(width: 8),
+                                        Text(isPremium
+                                            ? 'Premium\'ı Kaldır'
+                                            : 'Premium Yap'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPremiumFeatureItem(String feature) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle,
+            color: Colors.green[600],
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(feature),
+        ],
+      ),
+    );
+  }
+
+  String _formatPremiumDate(dynamic timestamp) {
+    if (timestamp is Timestamp) {
+      return '${timestamp.toDate().day}/${timestamp.toDate().month}/${timestamp.toDate().year}';
+    }
+    return 'Bilinmeyen';
+  }
+
+  bool _isExpired(dynamic timestamp) {
+    if (timestamp is Timestamp) {
+      return timestamp.toDate().isBefore(DateTime.now());
+    }
+    return false;
+  }
+
+  void _showPremiumUserDetails(Map<String, dynamic> user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Premium Kullanıcı Detayları'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Email: ${user['email']}'),
+            Text('ID: ${user['id']}'),
+            Text('Premium: ${user['isPremium'] ?? false}'),
+            if (user['premiumExpiry'] != null)
+              Text(
+                  'Premium Bitiş: ${_formatPremiumDate(user['premiumExpiry'])}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _togglePremiumStatus(String userId, bool currentStatus) async {
+    try {
+      if (currentStatus) {
+        // Premium'ı kaldır
+        await _premiumService.updatePremiumStatus(userId, false);
+        _showSuccess('Premium durumu kaldırıldı');
+      } else {
+        // Premium yap - 1 yıl süreyle
+        final expiryDate = DateTime.now().add(const Duration(days: 365));
+        await _premiumService.updatePremiumStatus(userId, true,
+            expiryDate: expiryDate);
+        _showSuccess('Kullanıcı premium yapıldı (1 yıl)');
+      }
+
+      // Kullanıcı listesini yenile
+      _loadUsers();
+    } catch (e) {
+      _showError('Premium durumu güncellenemedi: $e');
+    }
   }
 }

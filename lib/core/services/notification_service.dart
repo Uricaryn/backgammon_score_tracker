@@ -179,32 +179,8 @@ class NotificationService {
 
   // Update notification tap handling
   void _handleUpdateNotificationTap(String payload) {
-    try {
-      // Parse payload to extract download URL
-      // Look for download_url in the payload string
-      final downloadUrlMatch =
-          RegExp(r'download_url:\s*([^,}]+)').firstMatch(payload);
-
-      if (downloadUrlMatch != null) {
-        final downloadUrl = downloadUrlMatch.group(1)?.trim();
-
-        if (downloadUrl != null &&
-            downloadUrl.isNotEmpty &&
-            downloadUrl != 'null') {
-          _launchDownloadUrl(downloadUrl);
-          debugPrint(
-              'Launching download URL from update notification: $downloadUrl');
-        } else {
-          debugPrint(
-              'Download URL is empty or null in update notification payload');
-        }
-      } else {
-        debugPrint(
-            'No download URL found in update notification payload: $payload');
-      }
-    } catch (e) {
-      debugPrint('Error handling update notification tap: $e');
-    }
+    // Update notification tap handling - simplified
+    debugPrint('Update notification tapped: $payload');
   }
 
   // Launch download URL

@@ -14,6 +14,7 @@ import 'package:backgammon_score_tracker/core/services/firebase_messaging_servic
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
+import 'package:backgammon_score_tracker/core/services/payment_service.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -92,6 +93,8 @@ void _initializeHeavyServicesOptimized() {
         _initializeNotificationServicesOptimized(),
         // Session service
         _initializeSessionService(),
+        // Payment service
+        _initializePaymentService(),
       ]);
 
       logService.info('Tüm servisler başarıyla başlatıldı');
@@ -141,6 +144,16 @@ Future<void> _initializeSessionService() async {
     await sessionService.setSessionTimeout(2880); // 2 gün
   } catch (e) {
     debugPrint('Session service initialization error: $e');
+  }
+}
+
+// Payment service initialize
+Future<void> _initializePaymentService() async {
+  try {
+    final paymentService = PaymentService();
+    await paymentService.initialize();
+  } catch (e) {
+    debugPrint('Payment service initialization error: $e');
   }
 }
 

@@ -10,6 +10,8 @@ import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/presentation/screens/player_match_history_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -23,6 +25,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   late TabController _tabController;
   final FriendshipService _friendshipService = FriendshipService();
   final MatchChallengeService _challengeService = MatchChallengeService();
+  final PremiumService _premiumService = PremiumService();
   final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _searchResults = [];
@@ -125,14 +128,105 @@ class _FriendsScreenState extends State<FriendsScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Arkadaşlık isteği gönderilemedi: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        final errorMessage = e.toString();
+        if (errorMessage.contains('PREMIUM_REQUIRED:')) {
+          // Premium gerekli dialog'u göster
+          _showPremiumRequiredDialog('Arkadaş Ekleme');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Arkadaşlık isteği gönderilemedi: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
+  }
+
+  // Premium gerekli dialog'u göster
+  void _showPremiumRequiredDialog(String feature) {
+    // TEMPORARY: Premium system disabled - allow all features
+    return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.star,
+              color: Colors.amber[700],
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Text('Premium Gerekli'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$feature özelliği için Premium\'a yükseltmeniz gerekiyor.',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Premium özellikler:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildPremiumFeatureItem('Sınırsız arkadaş ekleme'),
+            _buildPremiumFeatureItem('Sosyal turnuva oluşturma'),
+            _buildPremiumFeatureItem('Öncelikli destek'),
+            _buildPremiumFeatureItem('Reklamsız deneyim'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PremiumUpgradeScreen(source: 'friends'),
+                ),
+              );
+            },
+            icon: const Icon(Icons.star, size: 16),
+            label: const Text('Premium\'a Yükselt'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.amber[700],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumFeatureItem(String feature) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle,
+            color: Colors.green[600],
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(feature),
+        ],
+      ),
+    );
   }
 
   @override
@@ -191,63 +285,78 @@ class _FriendsScreenState extends State<FriendsScreen>
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Arkadaşlar'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(kToolbarHeight),
-          child: Center(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Ekran genişliğine göre scroll edilebilirliği ayarla
-                final screenWidth = MediaQuery.of(context).size.width;
-                final isScrollable =
-                    screenWidth < 600; // 600px altında scroll et
+    return FutureBuilder<bool>(
+      future: _premiumService.hasPremiumAccess(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: BackgroundBoard(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
 
-                return TabBar(
-                  controller: _tabController,
-                  isScrollable: isScrollable,
-                  labelStyle: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600),
-                  unselectedLabelStyle: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w500),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.people), text: 'Arkadaşlar'),
-                    Tab(icon: Icon(Icons.timeline), text: 'Aktivite'),
-                    Tab(icon: Icon(Icons.person_add), text: 'İstekler'),
-                    Tab(icon: Icon(Icons.search), text: 'Arama'),
-                  ],
-                );
-              },
+        final hasPremium = snapshot.data ?? false;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Arkadaşlar'),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(kToolbarHeight),
+              child: Center(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Ekran genişliğine göre scroll edilebilirliği ayarla
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    final isScrollable =
+                        screenWidth < 600; // 600px altında scroll et
+
+                    return TabBar(
+                      controller: _tabController,
+                      isScrollable: isScrollable,
+                      labelStyle: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600),
+                      unselectedLabelStyle: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      tabs: const [
+                        Tab(icon: Icon(Icons.people), text: 'Arkadaşlar'),
+                        Tab(icon: Icon(Icons.timeline), text: 'Aktivite'),
+                        Tab(icon: Icon(Icons.person_add), text: 'İstekler'),
+                        Tab(icon: Icon(Icons.search), text: 'Arama'),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-      body: BackgroundBoard(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _KeepAliveWrapper(
-              key: const PageStorageKey('friends_tab'),
-              child: _buildFriendsTab(),
+          body: BackgroundBoard(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _KeepAliveWrapper(
+                  key: const PageStorageKey('friends_tab'),
+                  child: _buildFriendsTab(),
+                ),
+                _KeepAliveWrapper(
+                  key: const PageStorageKey('activity_tab'),
+                  child: _buildActivityTab(),
+                ),
+                _KeepAliveWrapper(
+                  key: const PageStorageKey('requests_tab'),
+                  child: _buildRequestsTab(),
+                ),
+                _KeepAliveWrapper(
+                  key: const PageStorageKey('search_tab'),
+                  child: _buildSearchTab(),
+                ),
+              ],
             ),
-            _KeepAliveWrapper(
-              key: const PageStorageKey('activity_tab'),
-              child: _buildActivityTab(),
-            ),
-            _KeepAliveWrapper(
-              key: const PageStorageKey('requests_tab'),
-              child: _buildRequestsTab(),
-            ),
-            _KeepAliveWrapper(
-              key: const PageStorageKey('search_tab'),
-              child: _buildSearchTab(),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

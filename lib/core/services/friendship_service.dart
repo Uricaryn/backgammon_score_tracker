@@ -5,6 +5,7 @@ import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
 class FriendshipService {
   static final FriendshipService _instance = FriendshipService._internal();
@@ -15,6 +16,7 @@ class FriendshipService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final LogService _logService = LogService();
   final NotificationService _notificationService = NotificationService();
+  final PremiumService _premiumService = PremiumService();
 
   // Friend request statuses
   static const String requestPending = 'pending';
@@ -97,6 +99,14 @@ class FriendshipService {
       if (currentUser.uid == toUserId) {
         throw Exception('Kendinize arkadaşlık isteği gönderemezsiniz');
       }
+
+      // Premium kontrolü
+      // TEMPORARY: Premium system disabled - allow all friend additions
+      // final canAddFriend = await _premiumService.canAddFriend();
+      // if (!canAddFriend) {
+      //   throw Exception(
+      //       'PREMIUM_REQUIRED:Arkadaş ekleme limitiniz doldu. Premium\'a yükseltin.');
+      // }
 
       _logService.info('Sending friend request to: $toUserId',
           tag: 'Friendship');

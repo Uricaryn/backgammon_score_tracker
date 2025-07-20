@@ -8,6 +8,8 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/presentation/screens/tournament_detail_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
 class TournamentsScreen extends StatefulWidget {
   final int? initialTab;
@@ -26,6 +28,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   late TabController _tabController;
   final TournamentService _tournamentService = TournamentService();
   final FriendshipService _friendshipService = FriendshipService();
+  final PremiumService _premiumService = PremiumService();
 
   bool _isGuestUser = false;
 
@@ -242,6 +245,68 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   }
 
   Widget _buildSocialTournamentsTab() {
+    // TEMPORARY: Premium system disabled - allow all social tournaments
+    // return FutureBuilder<bool>(
+    //   future: _premiumService.hasPremiumAccess(),
+    //   builder: (context, snapshot) {
+    //     if (snapshot.connectionState == ConnectionState.waiting) {
+    //       return const Center(child: CircularProgressIndicator());
+    //     }
+
+    //     final hasPremium = snapshot.data ?? false;
+
+    //     if (!hasPremium) {
+    //       return Center(
+    //         child: StyledCard(
+    //           child: Padding(
+    //             padding: const EdgeInsets.all(24.0),
+    //             child: Column(
+    //               mainAxisSize: MainAxisSize.min,
+    //               children: [
+    //                 Icon(
+    //                   Icons.star,
+    //                   size: 64,
+    //                   color: Colors.amber[700],
+    //                 ),
+    //                 const SizedBox(height: 16),
+    //                 Text(
+    //                   'Premium Gerekli',
+    //                   style:
+    //                       Theme.of(context).textTheme.headlineSmall?.copyWith(
+    //                             fontWeight: FontWeight.bold,
+    //                             color: Colors.amber[700],
+    //                           ),
+    //                 ),
+    //                 const SizedBox(height: 12),
+    //                 Text(
+    //                   'Sosyal turnuva özelliği için Premium\'a yükseltmeniz gerekiyor.',
+    //                   textAlign: TextAlign.center,
+    //                   style: Theme.of(context).textTheme.bodyMedium,
+    //                 ),
+    //                 const SizedBox(height: 20),
+    //                 FilledButton.icon(
+    //                   onPressed: () {
+    //                     Navigator.push(
+    //                       context,
+    //                       MaterialPageRoute(
+    //                         builder: (context) =>
+    //                             PremiumUpgradeScreen(source: 'tournaments'),
+    //                       ),
+    //                     );
+    //                   },
+    //                   icon: const Icon(Icons.star),
+    //                   label: const Text('Premium\'a Yükselt'),
+    //                   style: FilledButton.styleFrom(
+    //                     backgroundColor: Colors.amber[700],
+    //                   ),
+    //                 ),
+    //               ],
+    //             ),
+    //           ),
+    //         ),
+    //       );
+    //     }
+
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _tournamentService.getTournaments(
           category: TournamentService.tournamentCategorySocial),
@@ -704,6 +769,16 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   }
 
   Widget _buildCreateTab() {
+    // TEMPORARY: Premium system disabled - allow all tournaments
+    // return FutureBuilder<bool>(
+    //   future: _premiumService.hasPremiumAccess(),
+    //   builder: (context, snapshot) {
+    //     if (snapshot.connectionState == ConnectionState.waiting) {
+    //       return const Center(child: CircularProgressIndicator());
+    //     }
+
+    //     final hasPremium = snapshot.data ?? false;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -747,6 +822,8 @@ class _TournamentsScreenState extends State<TournamentsScreen>
                     ),
                   ),
                   const SizedBox(height: 12),
+                  // TEMPORARY: Premium system disabled - allow all social tournaments
+                  // if (hasPremium)
                   FilledButton.icon(
                     onPressed: () =>
                         _showCreateTournamentDialog(isPersonal: false),
@@ -756,7 +833,35 @@ class _TournamentsScreenState extends State<TournamentsScreen>
                       minimumSize: const Size(double.infinity, 50),
                       backgroundColor: Colors.green,
                     ),
-                  ),
+                  )
+                  // else
+                  //   Container(
+                  //     width: double.infinity,
+                  //     height: 50,
+                  //     decoration: BoxDecoration(
+                  //       color: Colors.grey.withValues(alpha: 0.1),
+                  //       borderRadius: BorderRadius.circular(8),
+                  //       border: Border.all(color: Colors.grey),
+                  //     ),
+                  //     child: Row(
+                  //       mainAxisAlignment: MainAxisAlignment.center,
+                  //       children: [
+                  //         Icon(
+                  //           Icons.star,
+                  //           color: Colors.amber[700],
+                  //           size: 20,
+                  //         ),
+                  //         const SizedBox(width: 8),
+                  //         Text(
+                  //           'Sosyal Turnuva (Premium Gerekli)',
+                  //           style: TextStyle(
+                  //             color: Colors.grey[600],
+                  //             fontWeight: FontWeight.w500,
+                  //           ),
+                  //         ),
+                  //       ],
+                  //     ),
+                  //   ),
                 ],
               ),
             ),
@@ -795,7 +900,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
                   const SizedBox(height: 12),
                   _buildTournamentTypeInfo(
                     'Round Robin',
-                    'Herkes herkesle oynamı. En çok kazanan birinci.',
+                    'Herkes herkesle oynar. En çok kazanan birinci.',
                     Icons.sync,
                     Colors.blue,
                   ),
@@ -1387,17 +1492,109 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Turnuva oluşturulamadı: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        final errorMessage = e.toString();
+        if (errorMessage.contains('PREMIUM_REQUIRED:')) {
+          // Premium gerekli dialog'u göster
+          _showPremiumRequiredDialog('Sosyal Turnuva Oluşturma');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Turnuva oluşturulamadı: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
+  }
+
+  // Premium gerekli dialog'u göster
+  void _showPremiumRequiredDialog(String feature) {
+    // TEMPORARY: Premium system disabled - allow all features
+    return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.star,
+              color: Colors.amber[700],
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Text('Premium Gerekli'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$feature özelliği için Premium\'a yükseltmeniz gerekiyor.',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Premium özellikler:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildPremiumFeatureItem('Sınırsız arkadaş ekleme'),
+            _buildPremiumFeatureItem('Sosyal turnuva oluşturma'),
+            _buildPremiumFeatureItem('Öncelikli destek'),
+            _buildPremiumFeatureItem('Reklamsız deneyim'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      PremiumUpgradeScreen(source: 'tournaments'),
+                ),
+              );
+            },
+            icon: const Icon(Icons.star, size: 16),
+            label: const Text('Premium\'a Yükselt'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.amber[700],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumFeatureItem(String feature) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle,
+            color: Colors.green[600],
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(feature),
+        ],
+      ),
+    );
   }
 }

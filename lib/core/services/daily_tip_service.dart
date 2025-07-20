@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/constants/api_keys.dart';
 
 class DailyTipService {
   static final DailyTipService _instance = DailyTipService._internal();
@@ -11,10 +11,9 @@ class DailyTipService {
   static const String _cacheKey = 'daily_backgammon_tip';
   static const String _cacheDateKey = 'daily_tip_date';
 
-  // Hugging Face API endpoint (ücretsiz tier)
+  // Hugging Face API endpoint - daha uygun model kullanıyoruz
   static const String _apiUrl =
-      'https://api-inference.huggingface.co/models/gpt2';
-  static const String _apiKey = ''; // Hugging Face API key buraya gelecek
+      'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium';
 
   // Önceden hazırlanmış tavla bilgileri (API çalışmazsa fallback)
   static const List<String> _fallbackTips = [
@@ -33,6 +32,11 @@ class DailyTipService {
     'Tavla oyununda "outer board" (dış tahta), oyuncunun kendi yarısındaki ilk 6 noktadır.',
     'Tavla oyununda "midpoint" (orta nokta), oyun tahtasının ortasındaki 13. noktadır.',
     'Tavla oyununda "pip count" (nokta sayısı), bir oyuncunun tüm pullarının toplam mesafesidir.',
+    'Tavla oyununda "crawford rule", oyun sonunda bir oyuncu bir puan kala uygulanan özel kuraldır.',
+    'Tavla oyununda "jacoby rule", gammon ve backgammon puanlarının sadece oyun sonunda sayılması kuralıdır.',
+    'Tavla oyununda "beaver", çifte atıldığında rakibin tekrar çifte atma hakkıdır.',
+    'Tavla oyununda "raccoon", beaver\'dan sonra tekrar çifte atma hakkıdır.',
+    'Tavla oyununda "holland rule", oyun sonunda kazananın tüm pullarını çıkarması gerekir.',
   ];
 
   /// Günlük tavla bilgisini al
@@ -96,36 +100,68 @@ class DailyTipService {
   /// Hugging Face API'den bilgi al
   Future<String> _getTipFromAPI() async {
     try {
-      // API key yoksa fallback kullan
-      if (_apiKey.isEmpty) {
+      // API key kontrolü
+      if (!ApiKeys.isHuggingFaceApiKeyValid) {
         return _getRandomFallbackTip();
       }
+
+      // Tavla ile ilgili prompt'lar
+      final List<String> prompts = [
+        'Tavla oyunu hakkında ilginç bir strateji ipucu:',
+        'Tavla oyununda başarılı olmak için önemli bir kural:',
+        'Tavla oyunu tarihi hakkında ilginç bir bilgi:',
+        'Tavla oyununda kullanılan önemli bir terim ve açıklaması:',
+        'Tavla oyunu taktikleri hakkında bir ipucu:',
+      ];
+
+      // Rastgele bir prompt seç
+      final randomPrompt = prompts[DateTime.now().millisecond % prompts.length];
 
       final response = await http
           .post(
             Uri.parse(_apiUrl),
             headers: {
-              'Authorization': 'Bearer $_apiKey',
+              'Authorization': 'Bearer ${ApiKeys.huggingFaceApiKey}',
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
-              'inputs': 'Tavla oyunu hakkında ilginç bir bilgi ver:',
+              'inputs': randomPrompt,
               'parameters': {
-                'max_length': 150,
-                'temperature': 0.8,
+                'max_length': 100,
+                'temperature': 0.7,
                 'top_p': 0.9,
+                'do_sample': true,
+                'num_return_sequences': 1,
               }
             }),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final generatedText = data[0]['generated_text'] as String?;
 
-        if (generatedText != null && generatedText.isNotEmpty) {
+        // API response formatını kontrol et
+        String generatedText = '';
+        if (data is List && data.isNotEmpty) {
+          if (data[0] is Map && data[0].containsKey('generated_text')) {
+            generatedText = data[0]['generated_text'] as String;
+          } else if (data[0] is String) {
+            generatedText = data[0] as String;
+          }
+        } else if (data is Map && data.containsKey('generated_text')) {
+          generatedText = data['generated_text'] as String;
+        }
+
+        if (generatedText.isNotEmpty) {
           // Metni temizle ve tavla ile ilgili hale getir
-          return _cleanAndFormatTip(generatedText);
+          final cleanedTip = _cleanAndFormatTip(generatedText);
+
+          // Eğer temizlenmiş metin çok kısaysa veya anlamsızsa fallback kullan
+          if (cleanedTip.length < 20 || !_isRelevantToBackgammon(cleanedTip)) {
+            return _getRandomFallbackTip();
+          }
+
+          return cleanedTip;
         }
       }
 
@@ -152,18 +188,48 @@ class DailyTipService {
         .replaceAll(RegExp(r'\s+'), ' ') // Fazla boşlukları temizle
         .trim();
 
-    // Tavla ile ilgili değilse fallback kullan
-    if (!cleaned.toLowerCase().contains('tavla') &&
-        !cleaned.toLowerCase().contains('backgammon')) {
-      return _getRandomFallbackTip();
-    }
+    // Prompt'u temizle
+    cleaned = cleaned.replaceAll(RegExp(r'^.*?[:]\s*'), '');
 
     // Maksimum uzunluk kontrolü
     if (cleaned.length > 200) {
       cleaned = cleaned.substring(0, 200) + '...';
     }
 
+    // Minimum uzunluk kontrolü
+    if (cleaned.length < 20) {
+      return _getRandomFallbackTip();
+    }
+
     return cleaned;
+  }
+
+  /// Metnin tavla ile ilgili olup olmadığını kontrol et
+  bool _isRelevantToBackgammon(String text) {
+    final lowerText = text.toLowerCase();
+    final backgammonKeywords = [
+      'tavla',
+      'backgammon',
+      'zar',
+      'pul',
+      'oyun',
+      'strateji',
+      'taktik',
+      'kapı',
+      'bar',
+      'hit',
+      'blot',
+      'anchor',
+      'prime',
+      'bearing',
+      'gammon',
+      'jacoby',
+      'crawford',
+      'beaver',
+      'raccoon'
+    ];
+
+    return backgammonKeywords.any((keyword) => lowerText.contains(keyword));
   }
 
   /// Cache'i temizle (test için)
@@ -179,6 +245,87 @@ class DailyTipService {
 
   /// API durumunu kontrol et
   Future<bool> isAPIAvailable() async {
-    return _apiKey.isNotEmpty;
+    return ApiKeys.isHuggingFaceApiKeyValid;
+  }
+
+  /// API'yi test et
+  Future<bool> testAPI() async {
+    try {
+      if (!ApiKeys.isHuggingFaceApiKeyValid) return false;
+
+      final response = await http
+          .post(
+            Uri.parse(_apiUrl),
+            headers: {
+              'Authorization': 'Bearer ${ApiKeys.huggingFaceApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'inputs': 'Test',
+              'parameters': {
+                'max_length': 10,
+                'temperature': 0.7,
+              }
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// API durumunu detaylı kontrol et
+  Future<Map<String, dynamic>> getAPIStatus() async {
+    try {
+      if (!ApiKeys.isHuggingFaceApiKeyValid) {
+        return {
+          'available': false,
+          'error': 'API key is empty',
+          'fallback_used': true,
+        };
+      }
+
+      final response = await http
+          .post(
+            Uri.parse(_apiUrl),
+            headers: {
+              'Authorization': 'Bearer ${ApiKeys.huggingFaceApiKey}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'inputs': 'Tavla',
+              'parameters': {
+                'max_length': 20,
+                'temperature': 0.7,
+              }
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'available': true,
+          'status_code': response.statusCode,
+          'response_data': data,
+          'fallback_used': false,
+        };
+      } else {
+        return {
+          'available': false,
+          'status_code': response.statusCode,
+          'error': 'HTTP ${response.statusCode}',
+          'fallback_used': true,
+        };
+      }
+    } catch (e) {
+      return {
+        'available': false,
+        'error': e.toString(),
+        'fallback_used': true,
+      };
+    }
   }
 }

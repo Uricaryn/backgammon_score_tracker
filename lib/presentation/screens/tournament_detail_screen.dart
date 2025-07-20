@@ -7,6 +7,7 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/utils/number_utils.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/home_scoreboard_card.dart';
+import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 
 class TournamentDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tournament;
@@ -29,7 +30,12 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    // Tab sayısını turnuva türüne göre ayarla
+    final isPersonal = widget.tournament['category'] ==
+        TournamentService.tournamentCategoryPersonal;
+    final tabCount =
+        isPersonal ? 3 : 4; // Kişisel turnuvalar için 3, sosyal için 4
+    _tabController = TabController(length: tabCount, vsync: this);
   }
 
   @override
@@ -82,11 +88,14 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
               const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           indicatorSize: TabBarIndicatorSize.tab,
           dividerColor: Colors.transparent,
-          tabs: const [
-            Tab(icon: Icon(Icons.leaderboard), text: 'Scoreboard'),
-            Tab(icon: Icon(Icons.sports_esports), text: 'Maçlar'),
-            Tab(icon: Icon(Icons.history), text: 'Geçmiş'),
-            Tab(icon: Icon(Icons.chat), text: 'Mesajlar'),
+          tabs: [
+            const Tab(icon: Icon(Icons.leaderboard), text: 'Scoreboard'),
+            const Tab(icon: Icon(Icons.sports_esports), text: 'Maçlar'),
+            const Tab(icon: Icon(Icons.history), text: 'Geçmiş'),
+            // Mesajlar sekmesi sadece sosyal turnuvalar için
+            if (widget.tournament['category'] !=
+                TournamentService.tournamentCategoryPersonal)
+              const Tab(icon: Icon(Icons.chat), text: 'Mesajlar'),
           ],
         ),
       ),
@@ -97,7 +106,10 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
             _buildScoreboardTab(),
             _buildMatchesTab(),
             _buildHistoryTab(),
-            _buildMessagesTab(),
+            // Mesajlar sekmesi sadece sosyal turnuvalar için
+            if (widget.tournament['category'] !=
+                TournamentService.tournamentCategoryPersonal)
+              _buildMessagesTab(),
           ],
         ),
       ),
@@ -1014,26 +1026,121 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
       TextEditingController controller, User? user, String tournamentId) async {
     final text = controller.text.trim();
     if (text.isEmpty || user == null) return;
-    // Kullanıcı adını çek
-    String username = user.displayName ?? '';
-    if (username.isEmpty) {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      username = userDoc.data()?['username'] ?? 'Kullanıcı';
+
+    try {
+      // Kullanıcı adını çek
+      String username = user.displayName ?? '';
+      if (username.isEmpty) {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        username = userDoc.data()?['username'] ?? 'Kullanıcı';
+      }
+
+      // Mesajı kaydet
+      await FirebaseFirestore.instance
+          .collection('tournaments')
+          .doc(tournamentId)
+          .collection('messages')
+          .add({
+        'userId': user.uid,
+        'username': username,
+        'message': text,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // Turnuva katılımcılarına bildirim gönder
+      await _sendTournamentMessageNotification(
+          tournamentId, user.uid, username, text);
+
+      controller.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mesaj gönderilirken hata oluştu: $e')),
+      );
     }
-    await FirebaseFirestore.instance
-        .collection('tournaments')
-        .doc(tournamentId)
-        .collection('messages')
-        .add({
-      'userId': user.uid,
-      'username': username,
-      'message': text,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-    controller.clear();
+  }
+
+  // Turnuva mesaj bildirimi gönder
+  Future<void> _sendTournamentMessageNotification(String tournamentId,
+      String fromUserId, String fromUsername, String message) async {
+    try {
+      // Turnuva bilgilerini al
+      final tournamentDoc = await FirebaseFirestore.instance
+          .collection('tournaments')
+          .doc(tournamentId)
+          .get();
+
+      if (!tournamentDoc.exists) return;
+
+      final tournamentData = tournamentDoc.data()!;
+      final participants =
+          tournamentData['participants'] as List<dynamic>? ?? [];
+      final tournamentName = tournamentData['name'] as String? ?? 'Turnuva';
+
+      // Gönderen hariç diğer katılımcılara bildirim gönder
+      for (final participantId in participants) {
+        if (participantId != fromUserId) {
+          await _sendMessageNotificationToUser(
+            participantId.toString(),
+            fromUsername,
+            tournamentName,
+            message,
+            tournamentId,
+          );
+        }
+      }
+    } catch (e) {
+      print('Turnuva mesaj bildirimi gönderilirken hata: $e');
+    }
+  }
+
+  // Kullanıcıya mesaj bildirimi gönder
+  Future<void> _sendMessageNotificationToUser(
+    String toUserId,
+    String fromUsername,
+    String tournamentName,
+    String message,
+    String tournamentId,
+  ) async {
+    try {
+      // Alıcının bildirim tercihlerini kontrol et
+      final toUserDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(toUserId)
+          .get();
+
+      if (!toUserDoc.exists) return;
+
+      final toUserData = toUserDoc.data()!;
+      if (toUserData['socialNotifications'] != true) return;
+
+      // Sadece Firebase'e bildirim kaydı yap
+      // Local notification Cloud Functions tarafından gönderilecek
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'userId': toUserId,
+        'title': 'Yeni Turnuva Mesajı',
+        'body':
+            '$fromUsername: ${message.length > 50 ? message.substring(0, 50) + '...' : message}',
+        'type': 'tournament_message',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'data': {
+          'payload': 'tournament_message:$tournamentId',
+          'source': 'tournament_message',
+          'fromUserId': FirebaseAuth.instance.currentUser?.uid,
+          'fromUserName': fromUsername,
+          'tournamentId': tournamentId,
+          'tournamentName': tournamentName,
+          'message': message,
+        },
+      });
+
+      // Local notification kaldırıldı - Cloud Functions tarafından gönderilecek
+    } catch (e) {
+      print('Kullanıcıya mesaj bildirimi gönderilirken hata: $e');
+    }
   }
 
   String _formatChatTimestamp(dynamic timestamp) {

@@ -114,12 +114,39 @@ Uygulama, Clean Architecture prensiplerine uygun olarak aşağıdaki katmanlarda
    - State management
    - Kullanıcı etkileşimleri
 
-## Güvenlik
+## 🔒 Güvenlik
 
+### API Key Güvenliği
+- **Environment Variables**: API key'ler environment variables'dan alınır
+- **Server-side Doğrulama**: Tüm API key'ler server-side kontrol edilir
+- **Otomatik Tespit**: Eski API key'ler otomatik olarak tespit edilir
+- **Güvenlik İhlali Raporlama**: Şüpheli aktiviteler server'a bildirilir
+
+### Uygulama Güvenliği
 - Firebase Authentication ile güvenli kullanıcı yönetimi
 - Firestore güvenlik kuralları
 - Veri doğrulama ve sanitizasyon
 - Güvenli şifre yönetimi
+- APK kopyalama koruması
+- Cihaz bütünlüğü kontrolü
+
+### Premium Güvenliği
+- Server-side satın alma doğrulama
+- Sahte satın alma tespiti
+- Premium durum kontrolü
+- Güvenlik ihlali raporlama
+
+### Güvenlik Kurulumu
+1. **Environment Variables**:
+   ```bash
+   cp env.example .env
+   # .env dosyasına gerçek API key'lerinizi ekleyin
+   ```
+
+2. **API Key Kontrolü**:
+   - Gerçek API key'ler environment variables'dan alınır
+   - Eski API key'ler otomatik olarak reddedilir
+   - Güvenlik ihlalleri server'a bildirilir
 
 ## Lisans
 

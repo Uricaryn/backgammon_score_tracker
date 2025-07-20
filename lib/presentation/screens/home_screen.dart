@@ -14,6 +14,9 @@ import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/daily_tip_service.dart';
+import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen>
   final _guestDataService = GuestDataService();
   final _updateNotificationService = UpdateNotificationService();
   final _dailyTipService = DailyTipService();
+  final _premiumService = PremiumService();
 
   bool _isLoading = false;
   bool _isGuestUser = false;
@@ -297,14 +301,57 @@ class _HomeScreenState extends State<HomeScreen>
         title: const Text('Tavla Skor Takip'),
         actions: [
           if (!_isGuestUser) ...[
-            IconButton(
-              icon: const Icon(Icons.notifications),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationsScreen(),
-                ),
-              ),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('userId', isEqualTo: userId)
+                  .where('isRead', isEqualTo: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                int unreadCount = 0;
+                if (snapshot.hasData) {
+                  unreadCount = snapshot.data!.docs.length;
+                }
+
+                return Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationsScreen(),
+                        ),
+                      ),
+                    ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            unreadCount > 99 ? '99+' : unreadCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
             IconButton(
               icon: const Icon(Icons.person),
@@ -377,6 +424,12 @@ class _HomeScreenState extends State<HomeScreen>
 
                         // Diğer özellikler
                         _buildOtherFeaturesSection(),
+
+                        // TEMPORARY: Premium section disabled for deployment
+                        // if (!_isGuestUser) ...[
+                        //   const SizedBox(height: 16),
+                        //   _buildCompactPremiumSection(),
+                        // ],
                       ],
                     ),
                   ),
@@ -834,7 +887,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Turnuva oluştur, katıl ve yönet. Arkadaşlarınla rekabet et!',
+                  'Turnuva oluştur, katıl ve yönet. Sosyal turnuvalar Premium özelliği!',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
@@ -854,6 +907,256 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
       ],
+    );
+  }
+
+  // Premium bölümü
+  Widget _buildPremiumSection() {
+    return FutureBuilder<bool>(
+      future: _premiumService.hasPremiumAccess(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+
+        final hasPremium = snapshot.data ?? false;
+
+        if (hasPremium) {
+          return const SizedBox.shrink(); // Premium kullanıcılar için gösterme
+        }
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.amber[700]!.withValues(alpha: 0.1),
+                Colors.amber[500]!.withValues(alpha: 0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.amber[700]!.withValues(alpha: 0.3),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.amber[700]!.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber[700]!.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.star,
+                        color: Colors.amber[700],
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Premium\'a Yükselt',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.amber[700],
+                                  fontSize: 18,
+                                ),
+                          ),
+                          Text(
+                            'Daha fazla özellik için Premium\'a geçin',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color:
+                                      Colors.amber[700]!.withValues(alpha: 0.8),
+                                  fontSize: 13,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Premium özellikler:',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.amber[700],
+                      ),
+                ),
+                const SizedBox(height: 8),
+                _buildPremiumFeatureItem('Sınırsız arkadaş ekleme'),
+                _buildPremiumFeatureItem('Sosyal turnuva oluşturma'),
+                _buildPremiumFeatureItem('Öncelikli destek'),
+                _buildPremiumFeatureItem('Reklamsız deneyim'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              PremiumUpgradeScreen(source: 'home'),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.star, size: 18),
+                    label: const Text('Premium\'a Yükselt'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.amber[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPremiumFeatureItem(String feature) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle,
+            color: Colors.green[600],
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            feature,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.amber[700]!.withValues(alpha: 0.8),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Kompakt premium bölümü
+  Widget _buildCompactPremiumSection() {
+    return FutureBuilder<bool>(
+      future: _premiumService.hasPremiumAccess(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+
+        final hasPremium = snapshot.data ?? false;
+
+        if (hasPremium) {
+          return const SizedBox.shrink(); // Premium kullanıcılar için gösterme
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.amber[700]!.withValues(alpha: 0.05),
+                Colors.amber[500]!.withValues(alpha: 0.02),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.amber[700]!.withValues(alpha: 0.2),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber[700]!.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.star,
+                  color: Colors.amber[700],
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Premium\'a Yükselt',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber[700],
+                          ),
+                    ),
+                    Text(
+                      'Sınırsız arkadaş + Sosyal turnuvalar',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.amber[700]!.withValues(alpha: 0.7),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          PremiumUpgradeScreen(source: 'home'),
+                    ),
+                  );
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.amber[700],
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  minimumSize: const Size(0, 32),
+                ),
+                child: const Text(
+                  'Yükselt',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -933,7 +1236,7 @@ class _HomeScreenState extends State<HomeScreen>
                         icon: Icons.group,
                         color: Colors.purple,
                         label: 'Arkadaşlar',
-                        subtitle: 'Arkadaş ekle ve takip et',
+                        subtitle: 'Arkadaş ekle ve takip et (3 arkadaş limiti)',
                         onTap: () =>
                             Navigator.pushNamed(context, AppRouter.friends),
                       ),

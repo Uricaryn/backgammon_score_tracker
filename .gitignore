@@ -67,6 +67,7 @@ firebase_options.dart
 api_keys.txt
 secrets.json
 config.json
+lib/core/constants/api_keys.dart
 
 # Logs
 *.log
