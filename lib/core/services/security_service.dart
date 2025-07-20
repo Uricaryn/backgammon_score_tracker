@@ -67,8 +67,7 @@ class SecurityService {
       }
 
       // API key'lerin güvenli olup olmadığını kontrol et
-      if (ApiKeys.huggingFaceApiKey
-          .contains('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')) {
+      if (ApiKeys.huggingFaceApiKey.contains('hf_example_key_123456789')) {
         debugPrint('Eski API key tespit edildi - güvenlik ihlali');
         await reportSecurityViolation('OLD_API_KEY_EXPOSED');
         return false;
