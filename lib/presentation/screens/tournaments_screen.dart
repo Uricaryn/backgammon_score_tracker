@@ -120,10 +120,25 @@ class _TournamentsScreenState extends State<TournamentsScreen>
           child: Center(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // Ekran genişliğine göre scroll edilebilirliği ayarla
+                // Tab genişliklerini hesapla ve scrollable olup olmayacağını belirle
                 final screenWidth = MediaQuery.of(context).size.width;
-                final isScrollable =
-                    screenWidth < 600; // 600px altında scroll et
+                final availableWidth = constraints.maxWidth;
+
+                // Tab metinlerinin tahmini genişlikleri
+                final tabTexts = ['Kişisel', 'Sosyal', 'Davetler', 'Oluştur'];
+                final iconWidth = 24.0;
+                final textPadding = 8.0;
+                final tabPadding = 16.0;
+
+                double totalTabWidth = 0;
+                for (final text in tabTexts) {
+                  final textWidth =
+                      text.length * 8.0; // Tahmini karakter genişliği
+                  totalTabWidth +=
+                      iconWidth + textWidth + textPadding + tabPadding;
+                }
+
+                final isScrollable = totalTabWidth > availableWidth;
 
                 return TabBar(
                   controller: _tabController,

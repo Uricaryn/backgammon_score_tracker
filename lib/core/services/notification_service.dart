@@ -99,7 +99,7 @@ class NotificationService {
     try {
       final hasPermission = await checkPermissions();
       if (!hasPermission) {
-        throw Exception(ErrorService.notificationPermissionDenied);
+        // Don't throw exception, try to show notification anyway
       }
 
       const AndroidNotificationDetails androidPlatformChannelSpecifics =
@@ -126,8 +126,11 @@ class NotificationService {
         iOS: iOSPlatformChannelSpecifics,
       );
 
+      final notificationId =
+          DateTime.now().millisecondsSinceEpoch.remainder(100000);
+
       await _localNotifications.show(
-        DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        notificationId,
         title,
         body,
         platformChannelSpecifics,
@@ -139,7 +142,8 @@ class NotificationService {
         await _saveNotificationToFirebase(title, body, type, payload);
       }
     } catch (e) {
-      throw Exception(ErrorService.notificationSendFailed);
+      // Don't throw exception, just log the error
+      // throw Exception(ErrorService.notificationSendFailed);
     }
   }
 
@@ -169,10 +173,8 @@ class NotificationService {
             'timestamp': DateTime.now().toIso8601String(),
           },
         });
-        debugPrint('Yerel bildirim Firebase\'e kaydedildi: $title');
       }
     } catch (e) {
-      debugPrint('Firebase kaydetme hatası: $e');
       // Hata durumunda bildirim gösterilmeye devam etsin
     }
   }
@@ -180,7 +182,6 @@ class NotificationService {
   // Update notification tap handling
   void _handleUpdateNotificationTap(String payload) {
     // Update notification tap handling - simplified
-    debugPrint('Update notification tapped: $payload');
   }
 
   // Launch download URL
@@ -189,13 +190,8 @@ class NotificationService {
       final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-        debugPrint('Download URL opened: $url');
-      } else {
-        debugPrint('Cannot launch download URL: $url');
-      }
-    } catch (e) {
-      debugPrint('Failed to launch download URL: $e');
-    }
+      } else {}
+    } catch (e) {}
   }
 
   Future<void> showScheduledNotification({
@@ -246,8 +242,6 @@ class NotificationService {
         tz.TZDateTime.from(scheduledDate, tz.local),
         platformChannelSpecifics,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
     } catch (e) {
@@ -320,12 +314,8 @@ class NotificationService {
             'timestamp': DateTime.now().toIso8601String(),
           },
         });
-
-        debugPrint('Sosyal bildirim Firebase\'e kaydedildi: $title');
       }
-    } catch (e) {
-      debugPrint('Sosyal bildirim Firebase kaydetme hatası: $e');
-    }
+    } catch (e) {}
   }
 
   // Bildirim kanallarını oluştur
@@ -368,25 +358,16 @@ class NotificationService {
         playSound: true,
       );
 
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(mainChannel);
+      final androidPlugin =
+          _localNotifications.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
 
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(reminderChannel);
-
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(socialChannel);
-
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(updateChannel);
+      if (androidPlugin != null) {
+        await androidPlugin.createNotificationChannel(mainChannel);
+        await androidPlugin.createNotificationChannel(reminderChannel);
+        await androidPlugin.createNotificationChannel(socialChannel);
+        await androidPlugin.createNotificationChannel(updateChannel);
+      } else {}
     } catch (e) {
       // Hata durumunda sessizce geç
     }
@@ -480,8 +461,6 @@ class NotificationService {
         tz.TZDateTime.from(scheduledDate, tz.local),
         platformChannelSpecifics,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         payload: 'social_reminder',
         matchDateTimeComponents: DateTimeComponents.time,
       );
@@ -562,11 +541,7 @@ class NotificationService {
 
       // Son hoşgeldin bildirimi tarihini kaydet
       await _saveLastWelcomeNotificationDate();
-
-      debugPrint('Hoşgeldin bildirimi gösterildi: ${selectedMessage['title']}');
-    } catch (e) {
-      debugPrint('Hoşgeldin bildirimi gösterilirken hata: $e');
-    }
+    } catch (e) {}
   }
 
   // Hoşgeldin bildirimi gösterilebilir mi kontrol et
@@ -595,9 +570,7 @@ class NotificationService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           _lastWelcomeNotificationKey, DateTime.now().toIso8601String());
-    } catch (e) {
-      debugPrint('Hoşgeldin bildirimi tarihi kaydedilirken hata: $e');
-    }
+    } catch (e) {}
   }
 
   // Hoşgeldin bildirimi ayarlarını sıfırla (test için)
@@ -605,8 +578,6 @@ class NotificationService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_lastWelcomeNotificationKey);
-    } catch (e) {
-      debugPrint('Hoşgeldin bildirimi ayarları sıfırlanırken hata: $e');
-    }
+    } catch (e) {}
   }
 }

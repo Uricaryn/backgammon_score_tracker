@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 
 class AdminUpdateScreen extends StatefulWidget {
@@ -370,6 +371,53 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
       }
     } catch (e) {
       _showError('Migration hatası: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // Test local notification
+  Future<void> _testLocalNotification() async {
+    try {
+      final notificationService = NotificationService();
+      await notificationService.initialize();
+      await notificationService.createNotificationChannels();
+
+      await notificationService.showNotification(
+        title: 'Yerel Test Bildirimi',
+        body:
+            'Bu bir yerel test bildirimidir. Eğer bu bildirimi görüyorsanız, bildirim sistemi çalışıyor demektir.',
+        payload: 'local_test_notification',
+      );
+
+      _showSuccess('Yerel test bildirimi gösterildi!');
+    } catch (e) {
+      _showError('Yerel test bildirimi gösterilemedi: $e');
+    }
+  }
+
+  // Test general notification
+  Future<void> _testGeneralNotification() async {
+    if (!_generalFormKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final callable =
+          FirebaseFunctions.instance.httpsCallable('testGeneralNotification');
+      final result = await callable.call({
+        'title': _generalTitleController.text.trim(),
+        'message': _generalMessageController.text.trim(),
+        'targetAudience': _targetAudience,
+      });
+
+      if (result.data['success']) {
+        _showSuccess('Test bildirimi başarıyla oluşturuldu!');
+      } else {
+        _showError('Test bildirimi oluşturulamadı');
+      }
+    } catch (e) {
+      _showError('Test bildirimi oluşturulamadı: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -825,36 +873,42 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
               ),
               const SizedBox(height: 20),
 
-              // Send Button
-              SizedBox(
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _sendGeneralNotification,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Genel Bildirim Gönder',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+              // Send Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _sendGeneralNotification,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : const Text(
+                                'Bildirim Gönder',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

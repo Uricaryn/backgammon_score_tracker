@@ -35,8 +35,8 @@ android {
         applicationId = "com.uricaryn.backgammon_score_tracker"
         minSdk = 23
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.5.1"
+        versionCode = 17
+        versionName = "1.5.4"
     }
 
     signingConfigs {
@@ -83,7 +83,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     
     // Core library desugaring
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     
     // AndroidX Core for latest API support
     implementation("androidx.core:core:1.12.0")

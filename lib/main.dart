@@ -22,28 +22,49 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Background'da bildirim göster
-  if (message.notification != null) {
-    try {
-      // Timezone initialize (bildirimler için gerekli)
-      tz.initializeTimeZones();
+  try {
+    // Timezone initialize (bildirimler için gerekli)
+    tz.initializeTimeZones();
 
-      // Notification service'i initialize et
-      final notificationService = NotificationService();
-      await notificationService.initialize();
-      await notificationService.createNotificationChannels();
+    // Notification service'i initialize et
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+    await notificationService.createNotificationChannels();
 
+    String title = 'Yeni Bildirim';
+    String body = '';
+
+    if (message.notification != null) {
+      // Notification payload varsa onu kullan
+      title = message.notification!.title ?? 'Yeni Bildirim';
+      body = message.notification!.body ?? '';
+      print('Background notification with notification payload: $title');
+    } else {
+      // Data-only message için data'dan al
+      title = message.data['title'] as String? ??
+          message.data['message'] as String? ??
+          'Yeni Bildirim';
+      body = message.data['message'] as String? ??
+          message.data['body'] as String? ??
+          '';
+      print('Background notification with data payload: $title');
+    }
+
+    if (title.isNotEmpty && body.isNotEmpty) {
       // Bildirimi göster
       await notificationService.showNotification(
-        title: message.notification!.title ?? 'Yeni Bildirim',
-        body: message.notification!.body ?? '',
+        title: title,
+        body: body,
         payload: message.data.toString(),
         saveToFirebase: false, // Background'da Firebase'e kaydetme
       );
 
-      print('Background notification shown: ${message.notification!.title}');
-    } catch (e) {
-      print('Error showing background notification: $e');
+      print('Background notification shown: $title');
+    } else {
+      print('No valid title/body found in background message');
     }
+  } catch (e) {
+    print('Error showing background notification: $e');
   }
 }
 
