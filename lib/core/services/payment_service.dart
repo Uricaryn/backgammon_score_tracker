@@ -46,7 +46,6 @@ class PaymentService {
 
   // Servisi başlat
   Future<void> initialize() async {
-    // TEMPORARY: Payment system disabled
     if (_paymentSystemDisabled) {
       debugPrint('Payment system temporarily disabled for deployment');
       _isAvailableController.add(false);
@@ -54,43 +53,36 @@ class PaymentService {
     }
 
     try {
-      // Debug modunda test ürünleri ekle
       if (kDebugMode) {
         debugPrint('Debug modunda test ürünleri yükleniyor...');
         _addTestProducts();
         return;
       }
 
-      // In-app purchase'ın kullanılabilir olup olmadığını kontrol et
       final available = await _inAppPurchase.isAvailable();
       _isAvailableController.add(available);
 
       if (!available) {
-        debugPrint('In-app purchase kullanılamıyor');
-        // Debug modunda test ürünleri ekle
+        debugPrint(
+            'In-app purchase kullanılamıyor, test ürünleri ekleniyor...');
         _addTestProducts();
         return;
       }
 
-      // Ürünleri yükle
       await _loadProducts();
 
-      // Eğer ürünler yüklenemezse test ürünleri ekle
       if (_products.isEmpty) {
         debugPrint(
             'Play Store ürünleri yüklenemedi, test ürünleri ekleniyor...');
-        _addTestProducts();
-      }
-
-      // Satın alma stream'ini dinle
-      _inAppPurchase.purchaseStream.listen(_handlePurchaseUpdates);
-    } catch (e) {
-      debugPrint('Payment service başlatılırken hata: $e');
-
-      // Hata durumunda test ürünleri ekle
-      debugPrint('Hata nedeniyle test ürünleri yükleniyor...');
-      _addTestProducts();
+              _addTestProducts();
     }
+
+    _inAppPurchase.purchaseStream.listen(_handlePurchaseUpdates);
+  } catch (e) {
+    debugPrint('Payment service başlatılırken hata: $e');
+    debugPrint('Hata nedeniyle test ürünleri yükleniyor...');
+    _addTestProducts();
+  }
   }
 
   // Debug modunda test ürünleri ekle

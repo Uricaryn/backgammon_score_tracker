@@ -42,7 +42,6 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
       // Eğer hala ürün yoksa test ürünlerini zorla ekle
       if (_paymentService.products.isEmpty) {
         debugPrint('Ürünler yüklenmedi, test ürünleri zorla ekleniyor...');
-        // Payment service'te test ürünlerini zorla ekle
         _paymentService.addTestProducts();
       }
 
@@ -52,6 +51,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
         });
       }
     } catch (e) {
+      debugPrint('Payment service initialization error: $e');
       if (mounted) {
         setState(() {
           _errorMessage = 'Ödeme sistemi başlatılamadı: $e';
@@ -316,7 +316,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
 
                             final products = snapshot.data ?? [];
 
-                            // Emülatörde test ürünlerini her zaman göster
+                            // Debug modunda veya ürün yoksa test ürünlerini göster
                             if (products.isEmpty || kDebugMode) {
                               return Column(
                                 children: [
