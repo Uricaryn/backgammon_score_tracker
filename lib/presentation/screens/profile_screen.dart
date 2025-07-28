@@ -10,6 +10,7 @@ import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
+import 'package:backgammon_score_tracker/core/widgets/dice_switch.dart';
 import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 import 'package:backgammon_score_tracker/core/constants/privacy_policy.dart';
 import 'package:backgammon_score_tracker/presentation/screens/admin_update_screen.dart';
@@ -802,14 +803,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Sistem Temasını Kullan'),
-                          subtitle: const Text('Otomatik tema değişimi'),
-                          value: themeProvider.useSystemTheme,
-                          onChanged: (value) {
-                            themeProvider.setUseSystemTheme(value);
-                          },
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Sistem Temasını Kullan',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Otomatik tema değişimi',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              DiceSwitch(
+                                value: themeProvider.useSystemTheme,
+                                onChanged: (value) {
+                                  themeProvider.setUseSystemTheme(value);
+                                },
+                                width: 70,
+                                height: 35,
+                                activeColor:
+                                    Theme.of(context).colorScheme.primary,
+                                inactiveColor:
+                                    Theme.of(context).colorScheme.outline,
+                              ),
+                            ],
+                          ),
                         ),
                         if (!themeProvider.useSystemTheme) ...[
                           const SizedBox(height: 8),

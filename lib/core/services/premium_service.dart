@@ -23,8 +23,8 @@ class PremiumService {
   static const int _freeSocialTournamentLimit =
       0; // Ücretsiz kullanıcılar sosyal turnuva oluşturamaz
 
-  // TEMPORARY: Premium system disabled for deployment
-  static const bool _premiumSystemDisabled = true;
+  // Premium system enabled
+  static const bool _premiumSystemDisabled = false;
 
   /// Kullanıcının premium durumunu kontrol et
   Future<bool> hasPremiumAccess() async {

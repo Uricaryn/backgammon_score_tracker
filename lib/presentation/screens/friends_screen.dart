@@ -146,9 +146,6 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   // Premium gerekli dialog'u göster
   void _showPremiumRequiredDialog(String feature) {
-    // TEMPORARY: Premium system disabled - allow all features
-    return;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

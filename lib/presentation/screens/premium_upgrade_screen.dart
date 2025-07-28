@@ -102,45 +102,6 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // TEMPORARY: System disabled message
-              StyledCard(
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Colors.orange[700],
-                        size: 32,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Premium Sistemi Geçici Olarak Devre Dışı',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange[700],
-                                ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Premium özellikler ve ödeme sistemi yakında aktif olacak. Şu anda tüm özellikler ücretsiz kullanılabilir.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
               // Header
               StyledCard(
                 child: Padding(

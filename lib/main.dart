@@ -15,6 +15,7 @@ import 'package:backgammon_score_tracker/core/services/update_notification_servi
 import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/services/payment_service.dart';
+import 'package:backgammon_score_tracker/core/services/ad_service.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -116,6 +117,8 @@ void _initializeHeavyServicesOptimized() {
         _initializeSessionService(),
         // Payment service
         _initializePaymentService(),
+        // AdMob service
+        _initializeAdService(),
       ]);
 
       logService.info('Tüm servisler başarıyla başlatıldı');
@@ -175,6 +178,16 @@ Future<void> _initializePaymentService() async {
     await paymentService.initialize();
   } catch (e) {
     debugPrint('Payment service initialization error: $e');
+  }
+}
+
+// AdMob service initialize
+Future<void> _initializeAdService() async {
+  try {
+    final adService = AdService();
+    await adService.initialize();
+  } catch (e) {
+    debugPrint('AdMob service initialization error: $e');
   }
 }
 

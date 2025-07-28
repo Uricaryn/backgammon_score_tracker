@@ -119,13 +119,12 @@ class TournamentService {
 
       if (category == tournamentCategorySocial) {
         // Sosyal turnuva için premium kontrolü
-        // TEMPORARY: Premium system disabled - allow all social tournaments
-        // final canCreateSocial =
-        //     await _premiumService.canCreateSocialTournament();
-        // if (!canCreateSocial) {
-        //   throw Exception(
-        //       'PREMIUM_REQUIRED:Sosyal turnuva oluşturmak için Premium\'a yükseltmeniz gerekiyor.');
-        // }
+        final canCreateSocial =
+            await _premiumService.canCreateSocialTournament();
+        if (!canCreateSocial) {
+          throw Exception(
+              'PREMIUM_REQUIRED:Sosyal turnuva oluşturmak için Premium\'a yükseltmeniz gerekiyor.');
+        }
 
         // Yaratıcıyı katılımcı olarak ekle
         await _addParticipant(
