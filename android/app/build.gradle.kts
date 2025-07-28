@@ -35,8 +35,8 @@ android {
         applicationId = "com.uricaryn.backgammon_score_tracker"
         minSdk = 23
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.5.5"
+        versionCode = 21
+        versionName = "1.6.0"
     }
 
     signingConfigs {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
@@ -22,6 +23,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
   final PremiumService _premiumService = PremiumService();
   final PaymentService _paymentService = PaymentService();
   bool _isLoading = false;
+  bool _isInitializing = true;
   String? _errorMessage;
 
   @override
@@ -33,10 +35,29 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
   Future<void> _initializePaymentService() async {
     try {
       await _paymentService.initialize();
+
+      // Ürünlerin yüklenmesini bekle
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Eğer hala ürün yoksa test ürünlerini zorla ekle
+      if (_paymentService.products.isEmpty) {
+        debugPrint('Ürünler yüklenmedi, test ürünleri zorla ekleniyor...');
+        // Payment service'te test ürünlerini zorla ekle
+        _paymentService.addTestProducts();
+      }
+
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Ödeme sistemi başlatılamadı: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Ödeme sistemi başlatılamadı: $e';
+          _isInitializing = false;
+        });
+      }
     }
   }
 
@@ -259,11 +280,8 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  StreamBuilder<List<ProductDetails>>(
-                    stream: _paymentService.productsStream,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Container(
+                  _isInitializing
+                      ? Container(
                           padding: const EdgeInsets.all(20),
                           child: const Center(
                             child: Column(
@@ -275,80 +293,101 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                               ],
                             ),
                           ),
-                        );
-                      }
+                        )
+                      : StreamBuilder<List<ProductDetails>>(
+                          stream: _paymentService.productsStream,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return Container(
+                                padding: const EdgeInsets.all(20),
+                                child: const Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircularProgressIndicator(),
+                                      SizedBox(height: 16),
+                                      Text('Premium planları yükleniyor...'),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
 
-                      final products = snapshot.data ?? [];
+                            final products = snapshot.data ?? [];
 
-                      if (products.isEmpty) {
-                        return Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color:
-                                        Colors.orange.withValues(alpha: 0.3)),
-                              ),
-                              child: const Text(
-                                'Test modunda çalışıyor - Gerçek ödeme sistemi sadece gerçek cihazda çalışır',
-                                style: TextStyle(color: Colors.orange),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPlanCard(
-                              'Aylık Premium (Test)',
-                              '₺19.99/ay',
-                              '1 ay premium erişim',
-                              Icons.calendar_month,
-                              Colors.blue,
-                              () => _purchaseProduct('premium_monthly'),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildPlanCard(
-                              'Yıllık Premium (Test)',
-                              '₺149.99/yıl',
-                              '12 ay premium erişim (2 ay bedava)',
-                              Icons.calendar_today,
-                              Colors.green,
-                              () => _purchaseProduct('premium_yearly'),
-                              isRecommended: true,
-                            ),
-                          ],
-                        );
-                      }
+                            // Emülatörde test ürünlerini her zaman göster
+                            if (products.isEmpty || kDebugMode) {
+                              return Column(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.orange.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: Colors.orange
+                                              .withValues(alpha: 0.3)),
+                                    ),
+                                    child: const Text(
+                                      'Test modunda çalışıyor - Gerçek ödeme sistemi sadece gerçek cihazda çalışır',
+                                      style: TextStyle(color: Colors.orange),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildPlanCard(
+                                    'Aylık Premium (Test)',
+                                    '₺19.99/ay',
+                                    '1 ay premium erişim',
+                                    Icons.calendar_month,
+                                    Colors.blue,
+                                    () => _purchaseProduct('premium_monthly'),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  // _buildPlanCard(
+                                  //   'Yıllık Premium (Test)',
+                                  //   '₺149.99/yıl',
+                                  //   '12 ay premium erişim (2 ay bedava)',
+                                  //   Icons.calendar_today,
+                                  //   Colors.green,
+                                  //   () => _purchaseProduct('premium_yearly'),
+                                  //   isRecommended: true,
+                                  // ),
+                                ],
+                              );
+                            }
 
-                      return Column(
-                        children: [
-                          if (_paymentService.getMonthlyPremium() != null)
-                            _buildPlanCard(
-                              _paymentService.getMonthlyPremium()!.title,
-                              _paymentService.getMonthlyPremium()!.price,
-                              '1 ay premium erişim',
-                              Icons.calendar_month,
-                              Colors.blue,
-                              () => _purchaseProduct('premium_monthly'),
-                            ),
-                          if (_paymentService.getMonthlyPremium() != null &&
-                              _paymentService.getYearlyPremium() != null)
-                            const SizedBox(height: 12),
-                          if (_paymentService.getYearlyPremium() != null)
-                            _buildPlanCard(
-                              _paymentService.getYearlyPremium()!.title,
-                              _paymentService.getYearlyPremium()!.price,
-                              '12 ay premium erişim (2 ay bedava)',
-                              Icons.calendar_today,
-                              Colors.green,
-                              () => _purchaseProduct('premium_yearly'),
-                              isRecommended: true,
-                            ),
-                        ],
-                      );
-                    },
-                  ),
+                            return Column(
+                              children: [
+                                if (_paymentService.getMonthlyPremium() != null)
+                                  _buildPlanCard(
+                                    _paymentService.getMonthlyPremium()!.title,
+                                    _paymentService.getMonthlyPremium()!.price,
+                                    '1 ay premium erişim',
+                                    Icons.calendar_month,
+                                    Colors.blue,
+                                    () => _purchaseProduct('premium_monthly'),
+                                  ),
+                                if (_paymentService.getMonthlyPremium() !=
+                                        null &&
+                                    _paymentService.getYearlyPremium() != null)
+                                  const SizedBox(height: 12),
+                                // if (_paymentService.getYearlyPremium() != null)
+                                //   _buildPlanCard(
+                                //     _paymentService.getYearlyPremium()!.title,
+                                //     _paymentService.getYearlyPremium()!.price,
+                                //     '12 ay premium erişim (2 ay bedava)',
+                                //     Icons.calendar_today,
+                                //     Colors.green,
+                                //     () => _purchaseProduct('premium_yearly'),
+                                //     isRecommended: true,
+                                //   ),
+                              ],
+                            );
+                          },
+                        ),
                 ],
               ),
               const SizedBox(height: 16),

@@ -49,20 +49,45 @@ class PremiumService {
         return cachedStatus;
       }
 
-      // Server-side doğrulama çağır
-      final functions = FirebaseFunctions.instance;
-      final result =
-          await functions.httpsCallable('checkPremiumStatus').call({});
+      try {
+        // Server-side doğrulama çağır
+        final functions = FirebaseFunctions.instance;
+        final result =
+            await functions.httpsCallable('checkPremiumStatus').call({});
 
-      final hasValidPremium = result.data['isPremium'] ?? false;
+        final hasValidPremium = result.data['isPremium'] ?? false;
 
-      // Cache'i güncelle
-      await prefs.setBool(_premiumStatusKey, hasValidPremium);
-      await prefs.setInt(_lastCheckKey, now);
+        // Cache'i güncelle
+        await prefs.setBool(_premiumStatusKey, hasValidPremium);
+        await prefs.setInt(_lastCheckKey, now);
 
-      _logService.info('Premium status checked: $hasValidPremium',
-          tag: 'Premium');
-      return hasValidPremium;
+        _logService.info('Premium status checked: $hasValidPremium',
+            tag: 'Premium');
+        return hasValidPremium;
+      } catch (functionError) {
+        _logService.error(
+            'Firebase function error, checking Firestore directly',
+            tag: 'Premium',
+            error: functionError);
+
+        // Firebase Functions başarısız olursa Firestore'dan direkt kontrol et
+        final userDoc =
+            await _firestore.collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data();
+          final isPremium = userData?['isPremium'] ?? false;
+
+          // Cache'i güncelle
+          await prefs.setBool(_premiumStatusKey, isPremium);
+          await prefs.setInt(_lastCheckKey, now);
+
+          _logService.info('Premium status from Firestore: $isPremium',
+              tag: 'Premium');
+          return isPremium;
+        }
+
+        return false;
+      }
     } catch (e) {
       _logService.error('Failed to check premium status',
           tag: 'Premium', error: e);
@@ -179,9 +204,22 @@ class PremiumService {
       await prefs.remove(_premiumStatusKey);
       await prefs.remove(_lastCheckKey);
       await prefs.remove(_premiumExpiryKey);
+      _logService.info('Premium cache cleared', tag: 'Premium');
     } catch (e) {
       _logService.error('Failed to clear premium cache',
           tag: 'Premium', error: e);
+    }
+  }
+
+  /// Premium durumunu zorla yenile
+  Future<bool> refreshPremiumStatus() async {
+    try {
+      await clearPremiumCache();
+      return await hasPremiumAccess();
+    } catch (e) {
+      _logService.error('Failed to refresh premium status',
+          tag: 'Premium', error: e);
+      return false;
     }
   }
 }
