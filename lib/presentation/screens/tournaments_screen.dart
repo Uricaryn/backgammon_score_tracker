@@ -162,14 +162,16 @@ class _TournamentsScreenState extends State<TournamentsScreen>
         ),
       ),
       body: BackgroundBoard(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildPersonalTournamentsTab(),
-            _buildSocialTournamentsTab(),
-            _buildInvitationsTab(),
-            _buildCreateTab(),
-          ],
+        child: SafeArea(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildPersonalTournamentsTab(),
+              _buildSocialTournamentsTab(),
+              _buildInvitationsTab(),
+              _buildCreateTab(),
+            ],
+          ),
         ),
       ),
     );

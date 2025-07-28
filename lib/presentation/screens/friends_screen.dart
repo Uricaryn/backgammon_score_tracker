@@ -350,26 +350,28 @@ class _FriendsScreenState extends State<FriendsScreen>
             ),
           ),
           body: BackgroundBoard(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _KeepAliveWrapper(
-                  key: const PageStorageKey('friends_tab'),
-                  child: _buildFriendsTab(),
-                ),
-                _KeepAliveWrapper(
-                  key: const PageStorageKey('activity_tab'),
-                  child: _buildActivityTab(),
-                ),
-                _KeepAliveWrapper(
-                  key: const PageStorageKey('requests_tab'),
-                  child: _buildRequestsTab(),
-                ),
-                _KeepAliveWrapper(
-                  key: const PageStorageKey('search_tab'),
-                  child: _buildSearchTab(),
-                ),
-              ],
+            child: SafeArea(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _KeepAliveWrapper(
+                    key: const PageStorageKey('friends_tab'),
+                    child: _buildFriendsTab(),
+                  ),
+                  _KeepAliveWrapper(
+                    key: const PageStorageKey('activity_tab'),
+                    child: _buildActivityTab(),
+                  ),
+                  _KeepAliveWrapper(
+                    key: const PageStorageKey('requests_tab'),
+                    child: _buildRequestsTab(),
+                  ),
+                  _KeepAliveWrapper(
+                    key: const PageStorageKey('search_tab'),
+                    child: _buildSearchTab(),
+                  ),
+                ],
+              ),
             ),
           ),
         );

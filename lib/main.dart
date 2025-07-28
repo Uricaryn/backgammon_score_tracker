@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -16,6 +17,8 @@ import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/services/payment_service.dart';
 import 'package:backgammon_score_tracker/core/services/ad_service.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -217,8 +220,38 @@ void _setupErrorHandling() {
   };
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final PremiumService _premiumService = PremiumService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  StreamSubscription<User?>? _authStateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAuthStateListener();
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _setupAuthStateListener() {
+    _authStateSubscription = _auth.authStateChanges().listen((User? user) {
+      if (user == null) {
+        // Kullanıcı çıkış yaptığında premium cache'i temizle
+        _premiumService.clearPremiumCache();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -237,6 +270,11 @@ class MyApp extends StatelessWidget {
             initialRoute: AppRouter.splash,
             onGenerateRoute: AppRouter.onGenerateRoute,
             debugShowCheckedModeBanner: false,
+            builder: (context, child) {
+              return SafeArea(
+                child: child!,
+              );
+            },
           );
         },
       ),

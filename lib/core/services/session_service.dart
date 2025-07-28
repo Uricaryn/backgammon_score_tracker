@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
 class SessionService {
   static const String _lastActivityKey = 'last_activity_timestamp';
@@ -110,6 +111,11 @@ class SessionService {
     try {
       await _auth.signOut();
       await _clearSessionData();
+
+      // Premium cache'ini temizle
+      final premiumService = PremiumService();
+      await premiumService.clearPremiumCache();
+
       stopSession();
     } catch (e) {
       // Handle error
@@ -146,4 +152,3 @@ class SessionService {
     }
   }
 }
- 

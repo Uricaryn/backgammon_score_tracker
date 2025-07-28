@@ -13,6 +13,8 @@ class PremiumService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final LogService _logService = LogService();
 
+  String? _lastUserId; // Son kontrol edilen kullanıcı ID'si
+
   // Premium durum cache key'leri
   static const String _premiumStatusKey = 'premium_status';
   static const String _premiumExpiryKey = 'premium_expiry';
@@ -37,6 +39,13 @@ class PremiumService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
+
+      // Kullanıcı değiştiyse cache'i temizle
+      if (_lastUserId != null && _lastUserId != currentUser.uid) {
+        await clearPremiumCache();
+        _logService.info('User changed, premium cache cleared', tag: 'Premium');
+      }
+      _lastUserId = currentUser.uid;
 
       // Önce cache'den kontrol et
       final prefs = await SharedPreferences.getInstance();
@@ -204,6 +213,10 @@ class PremiumService {
       await prefs.remove(_premiumStatusKey);
       await prefs.remove(_lastCheckKey);
       await prefs.remove(_premiumExpiryKey);
+
+      // Son kullanıcı ID'sini sıfırla
+      _lastUserId = null;
+
       _logService.info('Premium cache cleared', tag: 'Premium');
     } catch (e) {
       _logService.error('Failed to clear premium cache',

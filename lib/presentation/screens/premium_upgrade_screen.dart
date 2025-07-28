@@ -119,300 +119,303 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
         elevation: 0,
       ),
       body: BackgroundBoard(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // Header
-              StyledCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          Icons.star,
-                          size: 48,
-                          color: Colors.amber[700],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Premium\'a Yükselt',
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.amber[700],
-                                ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Arkadaş ekleme ve sosyal turnuva özelliklerinin kilidini açın',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Premium özellikler
-              StyledCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.diamond,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Header
+                StyledCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            Icons.star,
+                            size: 48,
                             color: Colors.amber[700],
-                            size: 24,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Premium Özellikler',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildFeatureItem(
-                        Icons.people,
-                        'Sınırsız Arkadaş Ekleme',
-                        'Ücretsiz kullanıcılar sadece 3 arkadaş ekleyebilir',
-                        Colors.blue,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildFeatureItem(
-                        Icons.emoji_events,
-                        'Sosyal Turnuva Oluşturma',
-                        'Arkadaşlarınızla turnuva oluşturun ve yönetin',
-                        Colors.green,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildFeatureItem(
-                        Icons.support_agent,
-                        'Öncelikli Destek',
-                        'Premium kullanıcılar için özel destek hattı',
-                        Colors.purple,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildFeatureItem(
-                        Icons.block,
-                        'Reklamsız Deneyim',
-                        'Rahatsız edici reklamlar olmadan kullanın',
-                        Colors.orange,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Ücretsiz limitler
-              StyledCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Colors.grey[600],
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Ücretsiz Limitler',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildLimitItem(
-                        'Arkadaş Ekleme',
-                        '3 arkadaş',
-                        Icons.people_outline,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildLimitItem(
-                        'Sosyal Turnuva',
-                        '0 turnuva',
-                        Icons.emoji_events_outlined,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Premium satın alma butonları
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      'Premium Planları',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  StreamBuilder<List<ProductDetails>>(
-                          stream: _paymentService.productsStream,
-                          builder: (context, snapshot) {
-                            // Başlangıç durumunda veya bağlantı beklerken loading göster
-                            if (snapshot.connectionState == ConnectionState.waiting || 
-                                snapshot.connectionState == ConnectionState.none) {
-                              return Container(
-                                padding: const EdgeInsets.all(20),
-                                child: const Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      CircularProgressIndicator(),
-                                      SizedBox(height: 16),
-                                      Text('Premium planları yükleniyor...'),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }
-
-                            final products = snapshot.data ?? [];
-
-                            // Ürün yoksa test ürünlerini göster (hem debug hem release için)
-                            if (products.isEmpty) {
-                              return Column(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          Colors.orange.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                          color: Colors.orange
-                                              .withValues(alpha: 0.3)),
-                                    ),
-                                    child: const Text(
-                                      'Play Store ürünleri yüklenemedi - Test ürünleri gösteriliyor',
-                                      style: TextStyle(color: Colors.orange),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildPlanCard(
-                                    'Aylık Premium (Test)',
-                                    '₺19.99/ay',
-                                    '1 ay premium erişim',
-                                    Icons.calendar_month,
-                                    Colors.blue,
-                                    () => _purchaseProduct('premium_monthly'),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  // _buildPlanCard(
-                                  //   'Yıllık Premium (Test)',
-                                  //   '₺149.99/yıl',
-                                  //   '12 ay premium erişim (2 ay bedava)',
-                                  //   Icons.calendar_today,
-                                  //   Colors.green,
-                                  //   () => _purchaseProduct('premium_yearly'),
-                                  //   isRecommended: true,
-                                  // ),
-                                ],
-                              );
-                            }
-
-                            return Column(
-                              children: [
-                                if (_paymentService.getMonthlyPremium() != null)
-                                  _buildPlanCard(
-                                    _paymentService.getMonthlyPremium()!.title,
-                                    _paymentService.getMonthlyPremium()!.price,
-                                    '1 ay premium erişim',
-                                    Icons.calendar_month,
-                                    Colors.blue,
-                                    () => _purchaseProduct('premium_monthly'),
-                                  ),
-                                if (_paymentService.getMonthlyPremium() !=
-                                        null &&
-                                    _paymentService.getYearlyPremium() != null)
-                                  const SizedBox(height: 12),
-                                // if (_paymentService.getYearlyPremium() != null)
-                                //   _buildPlanCard(
-                                //     _paymentService.getYearlyPremium()!.title,
-                                //     _paymentService.getYearlyPremium()!.price,
-                                //     '12 ay premium erişim (2 ay bedava)',
-                                //     Icons.calendar_today,
-                                //     Colors.green,
-                                //     () => _purchaseProduct('premium_yearly'),
-                                //     isRecommended: true,
-                                //   ),
-                              ],
-                            );
-                          },
                         ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Hata mesajı
-              if (_errorMessage != null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border:
-                        Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    _errorMessage!,
-                    style: TextStyle(color: Colors.red[700]),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-
-              if (_errorMessage != null) const SizedBox(height: 16),
-
-              // Geri dön butonu
-              if (widget.source != null)
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text('Geri Dön'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Premium\'a Yükselt',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber[700],
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Arkadaş ekleme ve sosyal turnuva özelliklerinin kilidini açın',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
                     ),
                   ),
                 ),
-            ],
+                const SizedBox(height: 16),
+
+                // Premium özellikler
+                StyledCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.diamond,
+                              color: Colors.amber[700],
+                              size: 24,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Premium Özellikler',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildFeatureItem(
+                          Icons.people,
+                          'Sınırsız Arkadaş Ekleme',
+                          'Ücretsiz kullanıcılar sadece 3 arkadaş ekleyebilir',
+                          Colors.blue,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildFeatureItem(
+                          Icons.emoji_events,
+                          'Sosyal Turnuva Oluşturma',
+                          'Arkadaşlarınızla turnuva oluşturun ve yönetin',
+                          Colors.green,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildFeatureItem(
+                          Icons.support_agent,
+                          'Öncelikli Destek',
+                          'Premium kullanıcılar için özel destek hattı',
+                          Colors.purple,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildFeatureItem(
+                          Icons.block,
+                          'Reklamsız Deneyim',
+                          'Rahatsız edici reklamlar olmadan kullanın',
+                          Colors.orange,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Ücretsiz limitler
+                StyledCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: Colors.grey[600],
+                              size: 24,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Ücretsiz Limitler',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildLimitItem(
+                          'Arkadaş Ekleme',
+                          '3 arkadaş',
+                          Icons.people_outline,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildLimitItem(
+                          'Sosyal Turnuva',
+                          '0 turnuva',
+                          Icons.emoji_events_outlined,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Premium satın alma butonları
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        'Premium Planları',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    StreamBuilder<List<ProductDetails>>(
+                      stream: _paymentService.productsStream,
+                      builder: (context, snapshot) {
+                        // Başlangıç durumunda veya bağlantı beklerken loading göster
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting ||
+                            snapshot.connectionState == ConnectionState.none) {
+                          return Container(
+                            padding: const EdgeInsets.all(20),
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text('Premium planları yükleniyor...'),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        final products = snapshot.data ?? [];
+
+                        // Ürün yoksa test ürünlerini göster (hem debug hem release için)
+                        if (products.isEmpty) {
+                          return Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color:
+                                          Colors.orange.withValues(alpha: 0.3)),
+                                ),
+                                child: const Text(
+                                  'Play Store ürünleri yüklenemedi - Test ürünleri gösteriliyor',
+                                  style: TextStyle(color: Colors.orange),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              _buildPlanCard(
+                                'Aylık Premium (Test)',
+                                '₺19.99/ay',
+                                '1 ay premium erişim',
+                                Icons.calendar_month,
+                                Colors.blue,
+                                () => _purchaseProduct('premium_monthly'),
+                              ),
+                              const SizedBox(height: 12),
+                              // _buildPlanCard(
+                              //   'Yıllık Premium (Test)',
+                              //   '₺149.99/yıl',
+                              //   '12 ay premium erişim (2 ay bedava)',
+                              //   Icons.calendar_today,
+                              //   Colors.green,
+                              //   () => _purchaseProduct('premium_yearly'),
+                              //   isRecommended: true,
+                              // ),
+                            ],
+                          );
+                        }
+
+                        return Column(
+                          children: [
+                            if (_paymentService.getMonthlyPremium() != null)
+                              _buildPlanCard(
+                                _paymentService.getMonthlyPremium()!.title,
+                                _paymentService.getMonthlyPremium()!.price,
+                                '1 ay premium erişim',
+                                Icons.calendar_month,
+                                Colors.blue,
+                                () => _purchaseProduct('premium_monthly'),
+                              ),
+                            if (_paymentService.getMonthlyPremium() != null &&
+                                _paymentService.getYearlyPremium() != null)
+                              const SizedBox(height: 12),
+                            // if (_paymentService.getYearlyPremium() != null)
+                            //   _buildPlanCard(
+                            //     _paymentService.getYearlyPremium()!.title,
+                            //     _paymentService.getYearlyPremium()!.price,
+                            //     '12 ay premium erişim (2 ay bedava)',
+                            //     Icons.calendar_today,
+                            //     Colors.green,
+                            //     () => _purchaseProduct('premium_yearly'),
+                            //     isRecommended: true,
+                            //   ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Hata mesajı
+                if (_errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border:
+                          Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red[700]),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+
+                if (_errorMessage != null) const SizedBox(height: 16),
+
+                // Geri dön butonu
+                if (widget.source != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Geri Dön'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
