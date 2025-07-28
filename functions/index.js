@@ -246,21 +246,39 @@ async function sendToBetaUsersDirectly(message, updateData) {
  * Geçersiz FCM token'larını temizle
  */
 async function cleanupInvalidTokens(failedTokens, userIds) {
+    console.log(`Cleaning up ${failedTokens.length} invalid tokens`);
+    
     const batch = db.batch();
+    let cleanedCount = 0;
     
     for (let i = 0; i < failedTokens.length && i < userIds.length; i++) {
         const userRef = db.collection('users').doc(userIds[i]);
         batch.update(userRef, {
             fcmToken: admin.firestore.FieldValue.delete(),
-            tokenInvalidAt: admin.firestore.FieldValue.serverTimestamp()
+            tokenInvalidAt: admin.firestore.FieldValue.serverTimestamp(),
+            isActive: false, // Token geçersizse kullanıcıyı inactive yap
         });
+        cleanedCount++;
     }
     
     try {
         await batch.commit();
-        console.log(`Cleaned up ${failedTokens.length} invalid tokens`);
+        console.log(`Successfully cleaned up ${cleanedCount} invalid tokens`);
     } catch (error) {
         console.error('Error cleaning up invalid tokens:', error);
+        // Batch başarısız olursa tek tek temizle
+        for (let i = 0; i < failedTokens.length && i < userIds.length; i++) {
+            try {
+                await db.collection('users').doc(userIds[i]).update({
+                    fcmToken: admin.firestore.FieldValue.delete(),
+                    tokenInvalidAt: admin.firestore.FieldValue.serverTimestamp(),
+                    isActive: false,
+                });
+                console.log(`Cleaned up invalid token for user ${userIds[i]}`);
+            } catch (singleError) {
+                console.error(`Error cleaning up token for user ${userIds[i]}:`, singleError);
+            }
+        }
     }
 }
 
@@ -639,6 +657,57 @@ exports.sendGeneralNotification = onCall(async (request) => {
     } catch (error) {
         console.error('Error sending general notification:', error);
         throw new Error('Failed to send general notification');
+    }
+});
+
+/**
+ * Test amaçlı genel bildirim gönderen HTTP fonksiyonu
+ * Sadece admin kullanıcıları çağırabilir
+ */
+exports.testGeneralNotification = onCall(async (request) => {
+    // Authentication kontrolü
+    if (!request.auth) {
+        throw new Error('User must be authenticated');
+    }
+
+    const uid = request.auth.uid;
+    const { title, message, targetAudience } = request.data;
+    
+    // Admin kontrolü
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists || !userDoc.data().isAdmin) {
+        throw new Error('User must be admin');
+    }
+
+    // Validation
+    if (!title || !message) {
+        throw new Error('Title and message are required');
+    }
+
+    try {
+        // Test bildirimi oluştur
+        const testNotification = {
+            type: 'general_notification',
+            title: title,
+            message: message,
+            targetAudience: targetAudience || 'all_users',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: uid,
+            status: 'pending',
+            isTest: true
+        };
+
+        const docRef = await db.collection('general_notifications').add(testNotification);
+        
+        return {
+            success: true,
+            notificationId: docRef.id,
+            message: 'Test notification created successfully'
+        };
+
+    } catch (error) {
+        console.error('Error creating test notification:', error);
+        throw new Error('Failed to create test notification');
     }
 });
 

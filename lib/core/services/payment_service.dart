@@ -7,10 +7,10 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 class PaymentService {
   static const String _monthlyPremiumId = 'premium_monthly';
-  static const String _yearlyPremiumId = 'premium_yearly';
+  // static const String _yearlyPremiumId = 'premium_yearly'; // Geçici olarak devre dışı
 
-  // TEMPORARY: Payment system disabled for deployment
-  static const bool _paymentSystemDisabled = true;
+  // Payment system enabled for production
+  static const bool _paymentSystemDisabled = false;
 
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -19,7 +19,7 @@ class PaymentService {
   // Premium ürün ID'leri
   static const Set<String> _productIds = {
     _monthlyPremiumId,
-    _yearlyPremiumId,
+    // _yearlyPremiumId, // Geçici olarak devre dışı
   };
 
   // Mevcut ürünler
@@ -67,22 +67,29 @@ class PaymentService {
 
       if (!available) {
         debugPrint('In-app purchase kullanılamıyor');
+        // Debug modunda test ürünleri ekle
+        _addTestProducts();
         return;
       }
 
       // Ürünleri yükle
       await _loadProducts();
 
+      // Eğer ürünler yüklenemezse test ürünleri ekle
+      if (_products.isEmpty) {
+        debugPrint(
+            'Play Store ürünleri yüklenemedi, test ürünleri ekleniyor...');
+        _addTestProducts();
+      }
+
       // Satın alma stream'ini dinle
       _inAppPurchase.purchaseStream.listen(_handlePurchaseUpdates);
     } catch (e) {
       debugPrint('Payment service başlatılırken hata: $e');
 
-      // Debug modunda test ürünleri ekle
-      if (kDebugMode) {
-        debugPrint('Hata nedeniyle test ürünleri yükleniyor...');
-        _addTestProducts();
-      }
+      // Hata durumunda test ürünleri ekle
+      debugPrint('Hata nedeniyle test ürünleri yükleniyor...');
+      _addTestProducts();
     }
   }
 
@@ -97,20 +104,25 @@ class PaymentService {
         rawPrice: 19.99,
         currencyCode: 'TRY',
       ),
-      ProductDetails(
-        id: _yearlyPremiumId,
-        title: 'Yıllık Premium (Test)',
-        description: '12 ay premium erişim',
-        price: '₺149.99',
-        rawPrice: 149.99,
-        currencyCode: 'TRY',
-      ),
+      // ProductDetails(
+      //   id: _yearlyPremiumId,
+      //   title: 'Yıllık Premium (Test)',
+      //   description: '12 ay premium erişim',
+      //   price: '₺149.99',
+      //   rawPrice: 149.99,
+      //   currencyCode: 'TRY',
+      // ),
     ];
     _productsController.add(_products);
     _isAvailableController.add(true);
 
     debugPrint(
         'Test ürünleri yüklendi. Production için Play Store kurulumu gerekli.');
+  }
+
+  // Test ürünlerini zorla ekle (public metod)
+  void addTestProducts() {
+    _addTestProducts();
   }
 
   // Play Store durumunu kontrol et
@@ -224,7 +236,7 @@ class PaymentService {
 
       bool success = false;
 
-      if (product.id == _monthlyPremiumId || product.id == _yearlyPremiumId) {
+      if (product.id == _monthlyPremiumId) {
         success =
             await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
       }
@@ -320,8 +332,6 @@ class PaymentService {
       int premiumDays = 0;
       if (purchaseDetails.productID == _monthlyPremiumId) {
         premiumDays = 30;
-      } else if (purchaseDetails.productID == _yearlyPremiumId) {
-        premiumDays = 365;
       }
 
       // Firestore'da premium durumunu güncelle
@@ -358,8 +368,7 @@ class PaymentService {
   // Premium ürünlerini getir
   List<ProductDetails> getPremiumProducts() {
     return _products
-        .where((product) =>
-            product.id == _monthlyPremiumId || product.id == _yearlyPremiumId)
+        .where((product) => product.id == _monthlyPremiumId)
         .toList();
   }
 
@@ -372,12 +381,8 @@ class PaymentService {
     }
   }
 
-  // Yıllık premium ürününü getir
+  // Yıllık premium ürününü getir (geçici olarak devre dışı)
   ProductDetails? getYearlyPremium() {
-    try {
-      return _products.firstWhere((product) => product.id == _yearlyPremiumId);
-    } catch (e) {
-      return null;
-    }
+    return null; // Geçici olarak devre dışı
   }
 }

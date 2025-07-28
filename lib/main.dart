@@ -15,6 +15,7 @@ import 'package:backgammon_score_tracker/core/services/update_notification_servi
 import 'package:backgammon_score_tracker/core/services/session_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/services/payment_service.dart';
+import 'package:backgammon_score_tracker/core/services/ad_service.dart';
 
 // Background message handler
 @pragma('vm:entry-point')
@@ -22,28 +23,49 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Background'da bildirim göster
-  if (message.notification != null) {
-    try {
-      // Timezone initialize (bildirimler için gerekli)
-      tz.initializeTimeZones();
+  try {
+    // Timezone initialize (bildirimler için gerekli)
+    tz.initializeTimeZones();
 
-      // Notification service'i initialize et
-      final notificationService = NotificationService();
-      await notificationService.initialize();
-      await notificationService.createNotificationChannels();
+    // Notification service'i initialize et
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+    await notificationService.createNotificationChannels();
 
+    String title = 'Yeni Bildirim';
+    String body = '';
+
+    if (message.notification != null) {
+      // Notification payload varsa onu kullan
+      title = message.notification!.title ?? 'Yeni Bildirim';
+      body = message.notification!.body ?? '';
+      print('Background notification with notification payload: $title');
+    } else {
+      // Data-only message için data'dan al
+      title = message.data['title'] as String? ??
+          message.data['message'] as String? ??
+          'Yeni Bildirim';
+      body = message.data['message'] as String? ??
+          message.data['body'] as String? ??
+          '';
+      print('Background notification with data payload: $title');
+    }
+
+    if (title.isNotEmpty && body.isNotEmpty) {
       // Bildirimi göster
       await notificationService.showNotification(
-        title: message.notification!.title ?? 'Yeni Bildirim',
-        body: message.notification!.body ?? '',
+        title: title,
+        body: body,
         payload: message.data.toString(),
         saveToFirebase: false, // Background'da Firebase'e kaydetme
       );
 
-      print('Background notification shown: ${message.notification!.title}');
-    } catch (e) {
-      print('Error showing background notification: $e');
+      print('Background notification shown: $title');
+    } else {
+      print('No valid title/body found in background message');
     }
+  } catch (e) {
+    print('Error showing background notification: $e');
   }
 }
 
@@ -95,6 +117,8 @@ void _initializeHeavyServicesOptimized() {
         _initializeSessionService(),
         // Payment service
         _initializePaymentService(),
+        // AdMob service
+        _initializeAdService(),
       ]);
 
       logService.info('Tüm servisler başarıyla başlatıldı');
@@ -154,6 +178,16 @@ Future<void> _initializePaymentService() async {
     await paymentService.initialize();
   } catch (e) {
     debugPrint('Payment service initialization error: $e');
+  }
+}
+
+// AdMob service initialize
+Future<void> _initializeAdService() async {
+  try {
+    final adService = AdService();
+    await adService.initialize();
+  } catch (e) {
+    debugPrint('AdMob service initialization error: $e');
   }
 }
 

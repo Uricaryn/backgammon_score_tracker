@@ -120,10 +120,25 @@ class _TournamentsScreenState extends State<TournamentsScreen>
           child: Center(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // Ekran genişliğine göre scroll edilebilirliği ayarla
+                // Tab genişliklerini hesapla ve scrollable olup olmayacağını belirle
                 final screenWidth = MediaQuery.of(context).size.width;
-                final isScrollable =
-                    screenWidth < 600; // 600px altında scroll et
+                final availableWidth = constraints.maxWidth;
+
+                // Tab metinlerinin tahmini genişlikleri
+                final tabTexts = ['Kişisel', 'Sosyal', 'Davetler', 'Oluştur'];
+                final iconWidth = 24.0;
+                final textPadding = 8.0;
+                final tabPadding = 16.0;
+
+                double totalTabWidth = 0;
+                for (final text in tabTexts) {
+                  final textWidth =
+                      text.length * 8.0; // Tahmini karakter genişliği
+                  totalTabWidth +=
+                      iconWidth + textWidth + textPadding + tabPadding;
+                }
+
+                final isScrollable = totalTabWidth > availableWidth;
 
                 return TabBar(
                   controller: _tabController,
@@ -245,97 +260,16 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   }
 
   Widget _buildSocialTournamentsTab() {
-    // TEMPORARY: Premium system disabled - allow all social tournaments
-    // return FutureBuilder<bool>(
-    //   future: _premiumService.hasPremiumAccess(),
-    //   builder: (context, snapshot) {
-    //     if (snapshot.connectionState == ConnectionState.waiting) {
-    //       return const Center(child: CircularProgressIndicator());
-    //     }
-
-    //     final hasPremium = snapshot.data ?? false;
-
-    //     if (!hasPremium) {
-    //       return Center(
-    //         child: StyledCard(
-    //           child: Padding(
-    //             padding: const EdgeInsets.all(24.0),
-    //             child: Column(
-    //               mainAxisSize: MainAxisSize.min,
-    //               children: [
-    //                 Icon(
-    //                   Icons.star,
-    //                   size: 64,
-    //                   color: Colors.amber[700],
-    //                 ),
-    //                 const SizedBox(height: 16),
-    //                 Text(
-    //                   'Premium Gerekli',
-    //                   style:
-    //                       Theme.of(context).textTheme.headlineSmall?.copyWith(
-    //                             fontWeight: FontWeight.bold,
-    //                             color: Colors.amber[700],
-    //                           ),
-    //                 ),
-    //                 const SizedBox(height: 12),
-    //                 Text(
-    //                   'Sosyal turnuva özelliği için Premium\'a yükseltmeniz gerekiyor.',
-    //                   textAlign: TextAlign.center,
-    //                   style: Theme.of(context).textTheme.bodyMedium,
-    //                 ),
-    //                 const SizedBox(height: 20),
-    //                 FilledButton.icon(
-    //                   onPressed: () {
-    //                     Navigator.push(
-    //                       context,
-    //                       MaterialPageRoute(
-    //                         builder: (context) =>
-    //                             PremiumUpgradeScreen(source: 'tournaments'),
-    //                       ),
-    //                     );
-    //                   },
-    //                   icon: const Icon(Icons.star),
-    //                   label: const Text('Premium\'a Yükselt'),
-    //                   style: FilledButton.styleFrom(
-    //                     backgroundColor: Colors.amber[700],
-    //                   ),
-    //                 ),
-    //               ],
-    //             ),
-    //           ),
-    //         ),
-    //       );
-    //     }
-
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _tournamentService.getTournaments(
-          category: TournamentService.tournamentCategorySocial),
+    return FutureBuilder<bool>(
+      future: _premiumService.hasPremiumAccess(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                Text('Hata: ${snapshot.error}'),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => setState(() {}),
-                  child: const Text('Tekrar Dene'),
-                ),
-              ],
-            ),
-          );
-        }
+        final hasPremium = snapshot.data ?? false;
 
-        final tournaments = snapshot.data ?? [];
-
-        if (tournaments.isEmpty) {
+        if (!hasPremium) {
           return Center(
             child: StyledCard(
               child: Padding(
@@ -344,32 +278,41 @@ class _TournamentsScreenState extends State<TournamentsScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.group_outlined,
+                      Icons.star,
                       size: 64,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: Colors.amber[700],
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Henüz Sosyal Turnuva Yok',
+                      'Premium Gerekli',
                       style:
                           Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
+                                color: Colors.amber[700],
                               ),
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Henüz hiç sosyal turnuvaya katılmadınız. Arkadaşlarınızla turnuva oluşturun veya davetlerini bekleyin.',
+                      'Sosyal turnuva özelliği için Premium\'a yükseltmeniz gerekiyor.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
                       onPressed: () {
-                        _tabController.animateTo(3); // Oluştur sekmesine git
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                PremiumUpgradeScreen(source: 'tournaments'),
+                          ),
+                        );
                       },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Sosyal Turnuva Oluştur'),
+                      icon: const Icon(Icons.star),
+                      label: const Text('Premium\'a Yükselt'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.amber[700],
+                      ),
                     ),
                   ],
                 ),
@@ -378,12 +321,88 @@ class _TournamentsScreenState extends State<TournamentsScreen>
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: tournaments.length,
-          itemBuilder: (context, index) {
-            final tournament = tournaments[index];
-            return _buildTournamentCard(tournament);
+        return StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _tournamentService.getTournaments(
+              category: TournamentService.tournamentCategorySocial),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text('Hata: ${snapshot.error}'),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => setState(() {}),
+                      child: const Text('Tekrar Dene'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            final tournaments = snapshot.data ?? [];
+
+            if (tournaments.isEmpty) {
+              return Center(
+                child: StyledCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.group_outlined,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Henüz Sosyal Turnuva Yok',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Henüz hiç sosyal turnuvaya katılmadınız. Arkadaşlarınızla turnuva oluşturun veya davetlerini bekleyin.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: () {
+                            _tabController
+                                .animateTo(3); // Oluştur sekmesine git
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('Sosyal Turnuva Oluştur'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: tournaments.length,
+              itemBuilder: (context, index) {
+                final tournament = tournaments[index];
+                return _buildTournamentCard(tournament);
+              },
+            );
           },
         );
       },
@@ -769,147 +788,152 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   }
 
   Widget _buildCreateTab() {
-    // TEMPORARY: Premium system disabled - allow all tournaments
-    // return FutureBuilder<bool>(
-    //   future: _premiumService.hasPremiumAccess(),
-    //   builder: (context, snapshot) {
-    //     if (snapshot.connectionState == ConnectionState.waiting) {
-    //       return const Center(child: CircularProgressIndicator());
-    //     }
+    return FutureBuilder<bool>(
+      future: _premiumService.hasPremiumAccess(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    //     final hasPremium = snapshot.data ?? false;
+        final hasPremium = snapshot.data ?? false;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          StyledCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              StyledCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.add_circle_outline,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Yeni Turnuva Oluştur',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'İki türde turnuva oluşturabilirsiniz: Kendi oyuncularınızla kişisel turnuvalar veya arkadaşlarınızla sosyal turnuvalar.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton.icon(
-                    onPressed: () =>
-                        _showCreateTournamentDialog(isPersonal: true),
-                    icon: const Icon(Icons.person),
-                    label: const Text('Kişisel Turnuva Oluştur'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      backgroundColor: Colors.blue,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // TEMPORARY: Premium system disabled - allow all social tournaments
-                  // if (hasPremium)
-                  FilledButton.icon(
-                    onPressed: () =>
-                        _showCreateTournamentDialog(isPersonal: false),
-                    icon: const Icon(Icons.group),
-                    label: const Text('Sosyal Turnuva Oluştur'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      backgroundColor: Colors.green,
-                    ),
-                  )
-                  // else
-                  //   Container(
-                  //     width: double.infinity,
-                  //     height: 50,
-                  //     decoration: BoxDecoration(
-                  //       color: Colors.grey.withValues(alpha: 0.1),
-                  //       borderRadius: BorderRadius.circular(8),
-                  //       border: Border.all(color: Colors.grey),
-                  //     ),
-                  //     child: Row(
-                  //       mainAxisAlignment: MainAxisAlignment.center,
-                  //       children: [
-                  //         Icon(
-                  //           Icons.star,
-                  //           color: Colors.amber[700],
-                  //           size: 20,
-                  //         ),
-                  //         const SizedBox(width: 8),
-                  //         Text(
-                  //           'Sosyal Turnuva (Premium Gerekli)',
-                  //           style: TextStyle(
-                  //             color: Colors.grey[600],
-                  //             fontWeight: FontWeight.w500,
-                  //           ),
-                  //         ),
-                  //       ],
-                  //     ),
-                  //   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          StyledCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Turnuva Tipleri',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.add_circle_outline,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Yeni Turnuva Oluştur',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'İki türde turnuva oluşturabilirsiniz: Kendi oyuncularınızla kişisel turnuvalar veya arkadaşlarınızla sosyal turnuvalar.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: () =>
+                            _showCreateTournamentDialog(isPersonal: true),
+                        icon: const Icon(Icons.person),
+                        label: const Text('Kişisel Turnuva Oluştur'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 50),
+                          backgroundColor: Colors.blue,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (hasPremium)
+                        FilledButton.icon(
+                          onPressed: () =>
+                              _showCreateTournamentDialog(isPersonal: false),
+                          icon: const Icon(Icons.group),
+                          label: const Text('Sosyal Turnuva Oluştur'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 50),
+                            backgroundColor: Colors.green,
+                          ),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.star,
+                                color: Colors.amber[700],
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Sosyal Turnuva (Premium Gerekli)',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              StyledCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Turnuva Tipleri',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTournamentTypeInfo(
+                        'Eleme Turnuvası',
+                        'Klasik eleme sistemi. Kaybeden elenir.',
+                        Icons.filter_list,
+                        Colors.red,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTournamentTypeInfo(
+                        'Round Robin',
+                        'Herkes herkesle oynar. En çok kazanan birinci.',
+                        Icons.sync,
+                        Colors.blue,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildTournamentTypeInfo(
-                    'Eleme Turnuvası',
-                    'Klasik eleme sistemi. Kaybeden elenir.',
-                    Icons.filter_list,
-                    Colors.red,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTournamentTypeInfo(
-                    'Round Robin',
-                    'Herkes herkesle oynar. En çok kazanan birinci.',
-                    Icons.sync,
-                    Colors.blue,
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1514,9 +1538,6 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
 
   // Premium gerekli dialog'u göster
   void _showPremiumRequiredDialog(String feature) {
-    // TEMPORARY: Premium system disabled - allow all features
-    return;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

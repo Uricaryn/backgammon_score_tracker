@@ -89,6 +89,9 @@ class FirebaseMessagingService {
     try {
       final user = _auth.currentUser;
       if (user != null) {
+        debugPrint('Saving FCM token for user: ${user.uid}');
+        debugPrint('FCM Token: $token');
+
         // Kullanıcı dokümantının var olup olmadığını kontrol et
         final userDoc =
             await _firestore.collection('users').doc(user.uid).get();
@@ -100,7 +103,10 @@ class FirebaseMessagingService {
             'lastTokenUpdate': FieldValue.serverTimestamp(),
             // isActive field'ını da güncelle (migration için)
             'isActive': true,
+            'notificationEnabled': true,
+            'socialNotifications': true,
           });
+          debugPrint('FCM token updated for existing user');
         } else {
           // Kullanıcı dokümantı yoksa oluştur
           await _firestore.collection('users').doc(user.uid).set({
@@ -114,9 +120,13 @@ class FirebaseMessagingService {
             'notificationEnabled': true,
             'socialNotifications': true,
             'subscribedToUpdates': true,
+            'isBetaUser': true, // Tüm kullanıcıları beta olarak işaretle
           });
+          debugPrint('FCM token saved for new user');
         }
-        debugPrint('FCM token saved to Firestore');
+        debugPrint('FCM token saved to Firestore successfully');
+      } else {
+        debugPrint('No authenticated user found for FCM token save');
       }
     } catch (e) {
       debugPrint('Error saving FCM token: $e');
@@ -125,13 +135,7 @@ class FirebaseMessagingService {
   }
 
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    debugPrint('Got a message whilst in the foreground!');
-    debugPrint('Message data: ${message.data}');
-
     if (message.notification != null) {
-      debugPrint(
-          'Message also contained a notification: ${message.notification}');
-
       // Yerel bildirim göster
       await _notificationService.showNotification(
         title: message.notification!.title ?? 'Yeni Bildirim',
@@ -141,6 +145,21 @@ class FirebaseMessagingService {
 
       // Bildirimi Firestore'a kaydet
       await _saveNotificationToFirestore(message);
+    } else {
+      // Data-only message için de bildirim göster
+      final title = message.data['title'] as String? ?? 'Yeni Bildirim';
+      final body = message.data['message'] as String? ??
+          message.data['body'] as String? ??
+          '';
+      if (title.isNotEmpty && body.isNotEmpty) {
+        await _notificationService.showNotification(
+          title: title,
+          body: body,
+          payload: message.data.toString(),
+        );
+        // Bildirimi Firestore'a kaydet
+        await _saveNotificationToFirestore(message);
+      } else {}
     }
   }
 

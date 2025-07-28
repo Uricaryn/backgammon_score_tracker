@@ -17,6 +17,8 @@ import 'package:backgammon_score_tracker/core/services/daily_tip_service.dart';
 import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
+import 'package:backgammon_score_tracker/core/services/ad_service.dart';
+import 'package:backgammon_score_tracker/core/widgets/banner_ad_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen>
   final _updateNotificationService = UpdateNotificationService();
   final _dailyTipService = DailyTipService();
   final _premiumService = PremiumService();
+  final _adService = AdService();
 
   bool _isLoading = false;
   bool _isGuestUser = false;
@@ -48,6 +51,26 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     _initializeScreen();
+    _showInterstitialAd();
+  }
+
+  // Geçiş reklamını göster
+  Future<void> _showInterstitialAd() async {
+    try {
+      // Premium kullanıcı kontrolü
+      final hasPremium = await _premiumService.hasPremiumAccess();
+      if (hasPremium) {
+        return;
+      }
+
+      final interstitialAd = await _adService.createInterstitialAd();
+      if (interstitialAd != null) {
+        await interstitialAd.show();
+        interstitialAd.dispose();
+      }
+    } catch (e) {
+      print('Geçiş reklamı gösterilemedi: $e');
+    }
   }
 
   // ✅ Properly handle async initialization
@@ -58,6 +81,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _initializeAsync() async {
     try {
+      // Ad service'i başlat
+      await _adService.initialize();
+
       // ✅ Properly await async operations
       await Future.wait([
         _checkUserTypeAsync(),
@@ -425,11 +451,15 @@ class _HomeScreenState extends State<HomeScreen>
                         // Diğer özellikler
                         _buildOtherFeaturesSection(),
 
-                        // TEMPORARY: Premium section disabled for deployment
-                        // if (!_isGuestUser) ...[
-                        //   const SizedBox(height: 16),
-                        //   _buildCompactPremiumSection(),
-                        // ],
+                        // Premium section
+                        if (!_isGuestUser) ...[
+                          const SizedBox(height: 16),
+                          _buildCompactPremiumSection(),
+                        ],
+
+                        // Banner reklam - en altta
+                        const SizedBox(height: 16),
+                        const BannerAdWidget(),
                       ],
                     ),
                   ),

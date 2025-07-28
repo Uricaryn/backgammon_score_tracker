@@ -5,6 +5,7 @@ import 'package:backgammon_score_tracker/core/providers/notification_provider.da
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
+import 'package:backgammon_score_tracker/core/widgets/dice_switch.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -510,25 +511,94 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SwitchListTile(
-                    title: const Text('Bildirimler'),
-                    subtitle: const Text('Tüm bildirimleri aç/kapat'),
-                    value: provider.preferences.enabled,
-                    onChanged: (value) {
-                      provider.toggleNotificationType('enabled');
-                    },
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Bildirimler',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Tüm bildirimleri aç/kapat',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        DiceSwitch(
+                          value: provider.preferences.enabled,
+                          onChanged: (value) {
+                            provider.toggleNotificationType('enabled');
+                          },
+                          width: 60,
+                          height: 30,
+                          activeColor: Theme.of(context).colorScheme.primary,
+                          inactiveColor: Theme.of(context).colorScheme.outline,
+                        ),
+                      ],
+                    ),
                   ),
-                  SwitchListTile(
-                    title: const Text('Sosyal Bildirimler'),
-                    subtitle: const Text('Günlük tavla hatırlatıcıları'),
-                    value: provider.preferences.socialNotifications,
-                    onChanged: (value) async {
-                      if (value) {
-                        await provider.startSocialNotifications();
-                      } else {
-                        await provider.stopSocialNotifications();
-                      }
-                    },
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Sosyal Bildirimler',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Günlük tavla hatırlatıcıları',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        DiceSwitch(
+                          value: provider.preferences.socialNotifications,
+                          onChanged: (value) async {
+                            if (value) {
+                              await provider.startSocialNotifications();
+                            } else {
+                              await provider.stopSocialNotifications();
+                            }
+                          },
+                          width: 60,
+                          height: 30,
+                          activeColor: Theme.of(context).colorScheme.primary,
+                          inactiveColor: Theme.of(context).colorScheme.outline,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               );

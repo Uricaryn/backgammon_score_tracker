@@ -101,12 +101,11 @@ class FriendshipService {
       }
 
       // Premium kontrolü
-      // TEMPORARY: Premium system disabled - allow all friend additions
-      // final canAddFriend = await _premiumService.canAddFriend();
-      // if (!canAddFriend) {
-      //   throw Exception(
-      //       'PREMIUM_REQUIRED:Arkadaş ekleme limitiniz doldu. Premium\'a yükseltin.');
-      // }
+      final canAddFriend = await _premiumService.canAddFriend();
+      if (!canAddFriend) {
+        throw Exception(
+            'PREMIUM_REQUIRED:Arkadaş ekleme limitiniz doldu. Premium\'a yükseltin.');
+      }
 
       _logService.info('Sending friend request to: $toUserId',
           tag: 'Friendship');

@@ -113,8 +113,27 @@ class FirebaseService {
       await _notificationService.initialize();
       await _messagingService.initialize();
       await _notificationService.createNotificationChannels();
+
+      // FCM token'ı kaydet
+      final fcmToken = _messagingService.fcmToken;
+      if (fcmToken != null) {
+        final user = _auth.currentUser;
+        if (user != null) {
+          await _firestore.collection('users').doc(user.uid).update({
+            'fcmToken': fcmToken,
+            'lastTokenUpdate': FieldValue.serverTimestamp(),
+            'isActive': true,
+            'notificationEnabled': true,
+            'socialNotifications': true,
+          });
+          _logService.info('FCM token saved during initialization',
+              tag: 'Auth');
+        }
+      }
     } catch (e) {
       // Bildirim servisleri başarısız olsa bile uygulama çalışmaya devam etsin
+      _logService.warning('Notification services initialization failed: $e',
+          tag: 'Auth');
     }
   }
 
