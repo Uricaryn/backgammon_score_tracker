@@ -23,7 +23,6 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
   final PremiumService _premiumService = PremiumService();
   final PaymentService _paymentService = PaymentService();
   bool _isLoading = false;
-  bool _isInitializing = true;
   String? _errorMessage;
 
   @override
@@ -37,7 +36,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
       await _paymentService.initialize();
 
       // Ürünlerin yüklenmesini bekle
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 3));
 
       // Eğer hala ürün yoksa test ürünlerini zorla ekle
       if (_paymentService.products.isEmpty) {
@@ -45,17 +44,18 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
         _paymentService.addTestProducts();
       }
 
+      // Her durumda setState çağır
       if (mounted) {
-        setState(() {
-          _isInitializing = false;
-        });
+        setState(() {});
       }
     } catch (e) {
       debugPrint('Payment service initialization error: $e');
+      // Hata durumunda da test ürünleri ekle
+      _paymentService.addTestProducts();
+
       if (mounted) {
         setState(() {
           _errorMessage = 'Ödeme sistemi başlatılamadı: $e';
-          _isInitializing = false;
         });
       }
     }
@@ -280,25 +280,12 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _isInitializing
-                      ? Container(
-                          padding: const EdgeInsets.all(20),
-                          child: const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircularProgressIndicator(),
-                                SizedBox(height: 16),
-                                Text('Premium planları yükleniyor...'),
-                              ],
-                            ),
-                          ),
-                        )
-                      : StreamBuilder<List<ProductDetails>>(
+                  StreamBuilder<List<ProductDetails>>(
                           stream: _paymentService.productsStream,
                           builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
+                            // Başlangıç durumunda veya bağlantı beklerken loading göster
+                            if (snapshot.connectionState == ConnectionState.waiting || 
+                                snapshot.connectionState == ConnectionState.none) {
                               return Container(
                                 padding: const EdgeInsets.all(20),
                                 child: const Center(
@@ -316,8 +303,8 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
 
                             final products = snapshot.data ?? [];
 
-                            // Debug modunda veya ürün yoksa test ürünlerini göster
-                            if (products.isEmpty || kDebugMode) {
+                            // Ürün yoksa test ürünlerini göster (hem debug hem release için)
+                            if (products.isEmpty) {
                               return Column(
                                 children: [
                                   Container(
@@ -331,7 +318,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                                               .withValues(alpha: 0.3)),
                                     ),
                                     child: const Text(
-                                      'Test modunda çalışıyor - Gerçek ödeme sistemi sadece gerçek cihazda çalışır',
+                                      'Play Store ürünleri yüklenemedi - Test ürünleri gösteriliyor',
                                       style: TextStyle(color: Colors.orange),
                                       textAlign: TextAlign.center,
                                     ),

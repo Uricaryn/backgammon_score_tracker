@@ -53,6 +53,7 @@ class PaymentService {
     }
 
     try {
+      // Debug modunda veya emülatörde test ürünleri ekle
       if (kDebugMode) {
         debugPrint('Debug modunda test ürünleri yükleniyor...');
         _addTestProducts();
@@ -71,18 +72,19 @@ class PaymentService {
 
       await _loadProducts();
 
+      // Release modunda da ürün yoksa test ürünleri ekle
       if (_products.isEmpty) {
         debugPrint(
             'Play Store ürünleri yüklenemedi, test ürünleri ekleniyor...');
-              _addTestProducts();
-    }
+        _addTestProducts();
+      }
 
-    _inAppPurchase.purchaseStream.listen(_handlePurchaseUpdates);
-  } catch (e) {
-    debugPrint('Payment service başlatılırken hata: $e');
-    debugPrint('Hata nedeniyle test ürünleri yükleniyor...');
-    _addTestProducts();
-  }
+      _inAppPurchase.purchaseStream.listen(_handlePurchaseUpdates);
+    } catch (e) {
+      debugPrint('Payment service başlatılırken hata: $e');
+      debugPrint('Hata nedeniyle test ürünleri yükleniyor...');
+      _addTestProducts();
+    }
   }
 
   // Debug modunda test ürünleri ekle
