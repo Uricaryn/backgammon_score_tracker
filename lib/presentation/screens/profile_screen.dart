@@ -35,8 +35,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _checkUsernameAndLoadData();
     _checkAdminAccess();
+  }
+
+  // Kullanıcı adı kontrolü ve veri yükleme
+  Future<void> _checkUsernameAndLoadData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Firestore'da kullanıcı dokümanını kontrol et
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        if (userDoc.exists) {
+          final userData = userDoc.data();
+          final username = userData?['username'] as String?;
+
+          // Kullanıcı adı kontrolü
+          if (username == null || username.isEmpty) {
+            // Kullanıcı adı yoksa username setup ekranına yönlendir
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, AppRouter.usernameSetup);
+            }
+            return;
+          }
+        }
+      }
+
+      // Kullanıcı adı varsa normal veri yükleme işlemlerini yap
+      _loadUserData();
+    } catch (e) {
+      debugPrint('Username check error: $e');
+      // Hata durumunda normal veri yükleme işlemlerini yap
+      _loadUserData();
+    }
   }
 
   // ✅ Check if user is admin - SECURE VERSION

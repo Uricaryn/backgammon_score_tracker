@@ -47,9 +47,15 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         setState(() {
           _isLoaded = true;
         });
+        print('✅ Banner ad widget başarıyla yüklendi');
       }
     }).catchError((error) {
-      // Banner reklam yükleme hatası
+      print('❌ Banner ad widget yükleme hatası: $error');
+      if (mounted) {
+        setState(() {
+          _isLoaded = false;
+        });
+      }
     });
   }
 

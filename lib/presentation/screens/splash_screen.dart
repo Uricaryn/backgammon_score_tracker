@@ -124,6 +124,18 @@ class _SplashScreenState extends State<SplashScreen>
                 context, AppRouter.login); // Kayıt ekranına yönlendir
           return;
         }
+
+        // Kullanıcı adı kontrolü
+        final userData = userDoc.data();
+        final username = userData?['username'] as String?;
+        if (username == null || username.isEmpty) {
+          // Kullanıcı adı yoksa username setup ekranına yönlendir
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, AppRouter.usernameSetup);
+          }
+          return;
+        }
+
         final isSessionActive = await _sessionService.isSessionActive();
         if (isSessionActive) {
           await _sessionService.refreshSession();

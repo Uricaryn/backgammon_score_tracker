@@ -41,26 +41,39 @@ class FriendshipService {
 
       _logService.info('Searching users with query: $query', tag: 'Friendship');
 
-      // Username ile arama
+      // Username ile arama - daha kapsamlı sonuçlar için
       final usernameQuery = await _firestore
           .collection('users')
           .where('username', isGreaterThanOrEqualTo: query.toLowerCase())
-          .where('username', isLessThan: query.toLowerCase() + 'z')
+          .where('username', isLessThan: query.toLowerCase() + '\uf8ff')
+          .limit(15)
+          .get();
+
+      // Email ile arama (kısmi eşleşme)
+      final emailQuery = await _firestore
+          .collection('users')
+          .where('email', isGreaterThanOrEqualTo: query.toLowerCase())
+          .where('email', isLessThan: query.toLowerCase() + '\uf8ff')
           .limit(10)
           .get();
 
-      // Email ile arama (tam eşleşme)
-      final emailQuery = await _firestore
+      // DisplayName ile arama (kısmi eşleşme)
+      final displayNameQuery = await _firestore
           .collection('users')
-          .where('email', isEqualTo: query.toLowerCase())
-          .limit(5)
+          .where('displayName', isGreaterThanOrEqualTo: query.toLowerCase())
+          .where('displayName', isLessThan: query.toLowerCase() + '\uf8ff')
+          .limit(10)
           .get();
 
       // Sonuçları birleştir ve dedup et
       final Set<String> seenIds = {};
       final List<Map<String, dynamic>> results = [];
 
-      for (final doc in [...usernameQuery.docs, ...emailQuery.docs]) {
+      for (final doc in [
+        ...usernameQuery.docs,
+        ...emailQuery.docs,
+        ...displayNameQuery.docs
+      ]) {
         if (doc.id == currentUser.uid || seenIds.contains(doc.id)) continue;
 
         seenIds.add(doc.id);
@@ -78,6 +91,35 @@ class FriendshipService {
           'isActive': data['isActive'] ?? false,
         });
       }
+
+      // Sonuçları sırala - en iyi eşleşenler önce
+      results.sort((a, b) {
+        final aUsername = (a['username'] as String).toLowerCase();
+        final bUsername = (b['username'] as String).toLowerCase();
+        final aEmail = (a['email'] as String).toLowerCase();
+        final bEmail = (b['email'] as String).toLowerCase();
+
+        // Tam eşleşme önce
+        if (aUsername == query.toLowerCase() &&
+            bUsername != query.toLowerCase()) return -1;
+        if (bUsername == query.toLowerCase() &&
+            aUsername != query.toLowerCase()) return 1;
+
+        // Başlangıç eşleşmesi
+        if (aUsername.startsWith(query.toLowerCase()) &&
+            !bUsername.startsWith(query.toLowerCase())) return -1;
+        if (bUsername.startsWith(query.toLowerCase()) &&
+            !aUsername.startsWith(query.toLowerCase())) return 1;
+
+        // Email eşleşmesi
+        if (aEmail.startsWith(query.toLowerCase()) &&
+            !bEmail.startsWith(query.toLowerCase())) return -1;
+        if (bEmail.startsWith(query.toLowerCase()) &&
+            !aEmail.startsWith(query.toLowerCase())) return 1;
+
+        // Alfabetik sıralama
+        return aUsername.compareTo(bUsername);
+      });
 
       _logService.info('Found ${results.length} users for query: $query',
           tag: 'Friendship');

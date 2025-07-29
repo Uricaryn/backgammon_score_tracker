@@ -17,13 +17,16 @@ class AdService {
   // Gerçek Ad Unit ID'leri
   static const String _bannerAdUnitId =
       'ca-app-pub-4377193604784253/9909213755'; // Banner reklam için yeni ID
+  // YENİ AD UNIT ID'Sİ BURAYA EKLENECEK: ca-app-pub-4377193604784253/[YENİ_ID]
+  static const String _backupBannerAdUnitId =
+      'ca-app-pub-4377193604784253/9909213755'; // Yedek banner ID (aynı ID)
   static const String _interstitialAdUnitId =
       'ca-app-pub-4377193604784253/3104132255'; // Geçiş reklamı için mevcut ID
   static const String _rewardedAdUnitId =
       'ca-app-pub-4377193604784253/3104132255';
 
   bool _isInitialized = false;
-  bool _isTestMode = false; // Gerçek reklamlar için false
+  bool _isTestMode = false; // Gerçek reklamlar için false - Test modunu kapatın
 
   // Test modunu kontrol etmek için
   bool get isTestMode => _isTestMode;
@@ -35,6 +38,14 @@ class AdService {
 
     try {
       await MobileAds.instance.initialize();
+
+      // Test cihazını kaldır - gerçek reklamlar için
+      // MobileAds.instance.updateRequestConfiguration(
+      //   RequestConfiguration(
+      //     testDeviceIds: [], // Test cihazlarını kaldır
+      //   ),
+      // );
+
       _isInitialized = true;
       print('AdMob başarıyla başlatıldı');
     } catch (e) {
@@ -45,23 +56,33 @@ class AdService {
   // Banner reklam oluştur
   BannerAd createBannerAd() {
     final adUnitId = _isTestMode ? _testBannerAdUnitId : _bannerAdUnitId;
+
+    print('Banner Ad Unit ID: $adUnitId');
+    print('Test Mode: $_isTestMode');
+
     return BannerAd(
       adUnitId: adUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          print('Banner reklam yüklendi');
+          print('✅ Banner reklam başarıyla yüklendi');
         },
         onAdFailedToLoad: (ad, error) {
-          print('Banner reklam yüklenemedi: $error');
+          print('❌ Banner reklam yüklenemedi: $error');
+          print('❌ Error Code: ${error.code}');
+          print('❌ Error Message: ${error.message}');
+          print('❌ Error Domain: ${error.domain}');
           ad.dispose();
         },
         onAdOpened: (ad) {
-          print('Banner reklam açıldı');
+          print('📱 Banner reklam açıldı');
         },
         onAdClosed: (ad) {
-          print('Banner reklam kapandı');
+          print('🔒 Banner reklam kapandı');
+        },
+        onAdImpression: (ad) {
+          print('👁️ Banner reklam gösterildi');
         },
       ),
     );

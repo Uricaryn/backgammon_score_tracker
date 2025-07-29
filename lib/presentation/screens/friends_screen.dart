@@ -12,6 +12,7 @@ import 'package:backgammon_score_tracker/presentation/screens/player_match_histo
 import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'dart:async';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -27,16 +28,25 @@ class _FriendsScreenState extends State<FriendsScreen>
   final MatchChallengeService _challengeService = MatchChallengeService();
   final PremiumService _premiumService = PremiumService();
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounceTimer;
 
-  List<Map<String, dynamic>> _searchResults = [];
-  bool _isSearching = false;
+  // ValueNotifier'lar ile daha verimli state yönetimi
+  final ValueNotifier<List<Map<String, dynamic>>> _searchResultsNotifier =
+      ValueNotifier<List<Map<String, dynamic>>>([]);
+  final ValueNotifier<bool> _isSearchingNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isDebouncingNotifier = ValueNotifier<bool>(false);
+
   bool _isGuestUser = false;
   Set<String> _sentRequests = {}; // Gönderilen arkadaşlık isteklerini takip et
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this); // 5 -> 4
+    _initializeScreen();
+  }
+
+  void _initializeScreen() {
+    _tabController = TabController(length: 4, vsync: this);
     _checkUserType();
   }
 
@@ -51,23 +61,54 @@ class _FriendsScreenState extends State<FriendsScreen>
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _searchDebounceTimer?.cancel();
+    _searchResultsNotifier.dispose();
+    _isSearchingNotifier.dispose();
+    _isDebouncingNotifier.dispose();
     super.dispose();
+  }
+
+  // Debounced kullanıcı arama
+  void _onSearchChanged(String value) {
+    // Önceki timer'ı iptal et
+    _searchDebounceTimer?.cancel();
+
+    if (value.length < 1) {
+      // Sadece gerekli durumlarda setState çağır
+      if (_searchResultsNotifier.value.isNotEmpty ||
+          _sentRequests.isNotEmpty ||
+          _isDebouncingNotifier.value) {
+        _searchResultsNotifier.value = [];
+        _sentRequests.clear();
+        _isDebouncingNotifier.value = false;
+      }
+      return;
+    }
+
+    // Sadece debouncing durumu değiştiyse setState çağır
+    if (!_isDebouncingNotifier.value) {
+      _isDebouncingNotifier.value = true;
+    }
+
+    // 300ms sonra aramayı başlat (daha kısa süre)
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        _isDebouncingNotifier.value = false;
+        _searchUsers();
+      }
+    });
   }
 
   // Kullanıcı arama
   Future<void> _searchUsers() async {
     final query = _searchController.text.trim();
-    if (query.isEmpty || query.length < 2) {
-      setState(() {
-        _searchResults = [];
-        _sentRequests.clear(); // Arama temizlenince istekleri de temizle
-      });
+    if (query.isEmpty || query.length < 1) {
+      _searchResultsNotifier.value = [];
+      _sentRequests.clear(); // Arama temizlenince istekleri de temizle
       return;
     }
 
-    setState(() {
-      _isSearching = true;
-    });
+    _isSearchingNotifier.value = true;
 
     try {
       final results = await _friendshipService.searchUsers(query);
@@ -88,10 +129,8 @@ class _FriendsScreenState extends State<FriendsScreen>
         updatedResults.add(updatedUser);
       }
 
-      setState(() {
-        _searchResults = updatedResults;
-        _sentRequests = newSentRequests;
-      });
+      _searchResultsNotifier.value = updatedResults;
+      _sentRequests = newSentRequests;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,9 +141,7 @@ class _FriendsScreenState extends State<FriendsScreen>
         );
       }
     } finally {
-      setState(() {
-        _isSearching = false;
-      });
+      _isSearchingNotifier.value = false;
     }
   }
 
@@ -853,19 +890,28 @@ class _FriendsScreenState extends State<FriendsScreen>
               child: Column(
                 children: [
                   TextField(
+                    key: const ValueKey('search_field'),
                     controller: _searchController,
                     decoration: InputDecoration(
                       labelText: 'Kullanıcı adı veya e-posta',
-                      hintText: 'En az 2 karakter girin',
+                      hintText: 'En az 1 karakter girin',
                       prefixIcon: const Icon(Icons.search),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear),
                               onPressed: () {
                                 _searchController.clear();
-                                setState(() {
-                                  _searchResults = [];
-                                });
+                                _searchDebounceTimer?.cancel();
+                                // Sadece gerekli durumlarda setState çağır
+                                if (_searchResultsNotifier.value.isNotEmpty ||
+                                    _sentRequests.isNotEmpty ||
+                                    _isDebouncingNotifier.value ||
+                                    _isSearchingNotifier.value) {
+                                  _searchResultsNotifier.value = [];
+                                  _sentRequests.clear();
+                                  _isDebouncingNotifier.value = false;
+                                  _isSearchingNotifier.value = false;
+                                }
                               },
                             )
                           : null,
@@ -874,84 +920,179 @@ class _FriendsScreenState extends State<FriendsScreen>
                       ),
                     ),
                     onChanged: (value) {
-                      if (value.length >= 2) {
-                        _searchUsers();
-                      } else {
-                        setState(() {
-                          _searchResults = [];
-                        });
+                      // Debounce mekanizmasını çağır
+                      _onSearchChanged(value);
+                    },
+                    // TextField'ı daha stabil hale getir
+                    textInputAction: TextInputAction.search,
+                    keyboardType: TextInputType.text,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isSearchingNotifier,
+                    builder: (context, isSearching, child) {
+                      if (isSearching) {
+                        return Column(
+                          children: [
+                            const SizedBox(height: 16),
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Aranıyor...'),
+                              ],
+                            ),
+                          ],
+                        );
                       }
+                      return const SizedBox.shrink();
                     },
                   ),
-                  if (_isSearching) ...[
-                    const SizedBox(height: 16),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 12),
-                        Text('Aranıyor...'),
-                      ],
-                    ),
-                  ],
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isDebouncingNotifier,
+                    builder: (context, isDebouncing, child) {
+                      if (isDebouncing) {
+                        return Column(
+                          children: [
+                            const SizedBox(height: 16),
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Arama yükleniyor...'),
+                              ],
+                            ),
+                          ],
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: _searchResults.isEmpty &&
-                    _searchController.text.length >= 2 &&
-                    !_isSearching
-                ? Center(
-                    child: StyledCard(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.search_off,
-                              size: 64,
-                              color: Colors.grey,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Kullanıcı Bulunamadı',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey,
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Aradığınız kriterlere uygun kullanıcı bulunamadı.',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _searchResults.length,
-                    itemBuilder: (context, index) {
-                      final user = _searchResults[index];
-                      return _buildSearchResultCard(user);
-                    },
-                  ),
+            child: ValueListenableBuilder<List<Map<String, dynamic>>>(
+              valueListenable: _searchResultsNotifier,
+              builder: (context, searchResults, child) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable: _isSearchingNotifier,
+                  builder: (context, isSearching, child) {
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _isDebouncingNotifier,
+                      builder: (context, isDebouncing, child) {
+                        return _buildSearchResults();
+                      },
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildSearchResults() {
+    final searchResults = _searchResultsNotifier.value;
+    final isSearching = _isSearchingNotifier.value;
+    final isDebouncing = _isDebouncingNotifier.value;
+
+    return searchResults.isEmpty &&
+            _searchController.text.length >= 1 &&
+            !isSearching &&
+            !isDebouncing
+        ? Center(
+            child: StyledCard(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.search_off,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Kullanıcı Bulunamadı',
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey,
+                              ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Aradığınız kriterlere uygun kullanıcı bulunamadı.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : isDebouncing
+            ? Center(
+                child: StyledCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: CircularProgressIndicator(),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Arama Hazırlanıyor...',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Lütfen bekleyin, arama başlatılıyor.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : ListView.builder(
+                key: ValueKey('search_results_${searchResults.length}'),
+                itemCount: searchResults.length,
+                itemBuilder: (context, index) {
+                  final user = searchResults[index];
+                  return _buildSearchResultCard(user);
+                },
+              );
   }
 
   Widget _buildSearchResultCard(Map<String, dynamic> user) {

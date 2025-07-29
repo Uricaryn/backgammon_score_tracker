@@ -11,6 +11,7 @@ import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen
 import 'package:backgammon_score_tracker/presentation/screens/friend_detail_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/scoreboard_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/username_setup_screen.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 
 class AppRouter {
@@ -26,6 +27,7 @@ class AppRouter {
   static const String friends = '/friends';
   static const String friendDetail = '/friend-detail';
   static const String premiumUpgrade = '/premium-upgrade';
+  static const String usernameSetup = '/username-setup';
 
   // İstatistik sayfaları listesi
   static const List<String> _statisticsRoutes = [
@@ -117,6 +119,8 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => PremiumUpgradeScreen(source: source),
         );
+      case usernameSetup:
+        return MaterialPageRoute(builder: (_) => const UsernameSetupScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(

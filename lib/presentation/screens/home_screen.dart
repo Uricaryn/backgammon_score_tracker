@@ -198,15 +198,18 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (userDoc.exists) {
         final userData = userDoc.data();
-        final username = userData?['username'] as String?;
 
-        finalUsername = username ??
-            user.displayName ??
-            user.email?.split('@').first ??
-            'Kullanıcı';
-      } else {
-        finalUsername =
-            user.displayName ?? user.email?.split('@').first ?? 'Kullanıcı';
+        // Kullanıcı adı kontrolü
+        final username = userData?['username'] as String?;
+        if (username == null || username.isEmpty) {
+          // Kullanıcı adı yoksa username setup ekranına yönlendir
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, AppRouter.usernameSetup);
+          }
+          return;
+        }
+
+        finalUsername = username;
       }
 
       if (mounted) {
@@ -215,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen>
         });
       }
     } catch (e) {
-      debugPrint('Username yüklenirken hata: $e');
+      debugPrint('Username loading error: $e');
       if (mounted) {
         setState(() {
           _username = 'Kullanıcı';
