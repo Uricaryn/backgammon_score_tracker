@@ -72,9 +72,12 @@ class _FriendDetailScreenState extends State<FriendDetailScreen>
       if (user == null) return [];
 
       // Her iki kullanıcının da katıldığı turnuvaları bul
+      // ✅ Limit ekle - son 20 ortak turnuva
       final snapshot = await FirebaseFirestore.instance
           .collection('tournaments')
           .where('participants', arrayContains: user.uid)
+          .orderBy('createdAt', descending: true)
+          .limit(20)
           .get();
 
       final sharedTournaments = <Map<String, dynamic>>[];

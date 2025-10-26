@@ -800,9 +800,12 @@ class _PlayersScreenState extends State<PlayersScreen> {
     print(
         'DEBUG: İstatistikler aranıyor - Oyuncu: $playerName, UserId: $userId');
 
+    // ✅ Limit ekle - sadece son 100 oyunu çek (index oluşana kadar)
     final snapshot = await FirebaseFirestore.instance
         .collection('games')
         .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .limit(100)
         .get();
 
     print('DEBUG: Toplam oyun sayısı: ${snapshot.docs.length}');

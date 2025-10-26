@@ -43,10 +43,12 @@ class _ScoreboardScreenState extends State<ScoreboardScreen> {
     } else {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId != null) {
+        // ✅ Limit ekle - son 200 maçı göster (skorboard için daha fazla veri gerekli)
         final snapshot = await FirebaseFirestore.instance
             .collection('games')
             .where('userId', isEqualTo: userId)
             .orderBy('timestamp', descending: true)
+            .limit(200)
             .get();
         _cachedGameData = {
           'timestamp': DateTime.now(),

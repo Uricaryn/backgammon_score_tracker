@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.uricaryn.backgammon_score_tracker"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
     buildToolsVersion = "35.0.0"
 
@@ -34,9 +34,9 @@ android {
     defaultConfig {
         applicationId = "com.uricaryn.backgammon_score_tracker"
         minSdk = 23
-        targetSdk = 33
-        versionCode = 24
-        versionName = "1.6.3"
+        targetSdk = 35
+        versionCode = 27
+        versionName = "1.7.0"
     }
 
     signingConfigs {

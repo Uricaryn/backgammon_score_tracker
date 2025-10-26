@@ -366,7 +366,7 @@ class FirebaseService {
     }
   }
 
-  Stream<QuerySnapshot> getGames() {
+  Stream<QuerySnapshot> getGames({int limit = 50}) {
     try {
       final user = _auth.currentUser;
       if (user?.isAnonymous == true) {
@@ -379,13 +379,14 @@ class FirebaseService {
           .collection('games')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
           .orderBy('timestamp', descending: true)
+          .limit(limit)
           .snapshots();
     } catch (e) {
       throw Exception('Oyunlar getirilirken bir hata oluştu: $e');
     }
   }
 
-  Stream<QuerySnapshot> getPlayers() {
+  Stream<QuerySnapshot> getPlayers({int limit = 100}) {
     try {
       final user = _auth.currentUser;
       if (user?.isAnonymous == true) {
@@ -398,18 +399,22 @@ class FirebaseService {
           .collection('players')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
           .orderBy('createdAt', descending: true)
+          .limit(limit)
           .snapshots();
     } catch (e) {
       throw Exception('Oyuncular getirilirken bir hata oluştu: $e');
     }
   }
 
-  // İstatistik işlemleri
+  // İstatistik işlemleri - OPTIMIZED ile limit ekle
   Future<Map<String, dynamic>> getStatistics() async {
     try {
+      // ✅ Sadece ilk 100 oyunu çek (yeterli örnekleme için)
       final games = await _firestore
           .collection('games')
           .where('userId', isEqualTo: _auth.currentUser?.uid)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
           .get();
 
       int totalGames = games.docs.length;

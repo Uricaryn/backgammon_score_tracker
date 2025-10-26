@@ -44,4 +44,52 @@
 # R8 specific rules for missing classes
 -dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
 -dontwarn com.google.android.play.core.splitinstall.**
--dontwarn com.google.android.play.core.tasks.** 
+-dontwarn com.google.android.play.core.tasks.**
+
+# ===== GÜVENLİK KURALLARI =====
+# Hassas bilgileri koruma
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+}
+
+# Firebase config dosyalarını gizle
+-keepclassmembers class * {
+    private static final java.lang.String GOOGLE_APP_ID;
+    private static final java.lang.String FIREBASE_URL;
+    private static final java.lang.String DEFAULT_WEB_CLIENT_ID;
+    private static final java.lang.String GCM_DEFAULT_SENDER_ID;
+}
+
+# Stack trace'leri temizle
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# Reflection kullanılan class'ları koru ama obfuscate et
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepattributes EnclosingMethod
+
+# Native method'ları koru
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Enum'ları koru
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# Serializable class'ları koru
+-keepnames class * implements java.io.Serializable
+-keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private static final java.io.ObjectStreamField[] serialPersistentFields;
+    !static !transient <fields>;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+    java.lang.Object writeReplace();
+    java.lang.Object readResolve();
+} 

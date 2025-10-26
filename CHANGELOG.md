@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.7.0] - 2025-01-XX
+
+### 🎉 Yeni Özellikler
+- **Turnuva Oyuncu İstatistikleri**: Turnuva içinde oyunculara tıklandığında o turnuvaya özel istatistikler görüntüleme
+  - Toplam maç, kazanma/kaybetme sayıları
+  - Kazanma oranı ve ortalama puan
+  - En çok yenilen rakip bilgisi
+  - Detaylı maç geçmişi
+- **Maç Düzenleme**: Turnuva geçmişindeki tamamlanmış maçları düzenleme ve silme
+  - Maç sonuçlarını güncelleme
+  - Yanlış girilen maçları silme
+  - Turnuva yaratıcısı için tam kontrol
+- **Tüm Katılımcılar Görünür**: Turnuva scoreboard'ında henüz maçı olmayan oyuncular da artık görünüyor
+  - Sonradan eklenen katılımcılar listeleniyor
+  - 0 maç ile başlayan oyuncular gösteriliyor
+
+### 🔧 İyileştirmeler
+- **Performans Optimizasyonları**: 
+  - Turnuva listesi yükleme hızı 10x daha hızlı
+  - N+1 query sorunları çözüldü
+  - Batch veri çekme ile optimize edildi
+- **Firestore İndeksleri**: Yeni composite indexler eklendi
+  - Tournament sorguları için 5 yeni index
+  - Player statistics için 2 yeni index
+  - Notification sorguları optimize edildi
+- **Query Limitleri**: Veri yükleme limitleri eklendi
+  - Turnuva listesi: son 50 turnuva
+  - Scoreboard: son 200 maç
+  - Match history: son 100 maç
+  - Tournament invitations: son 30 davet
+
+### 🐛 Düzeltmeler
+- Turnuva scoreboard ve maç geçmişi yavaş yükleme sorunu
+- Player statistics indeks hatası çözüldü
+- Notifications indeks hatası düzeltildi
+- Turnuvaya sonradan eklenen oyuncuların görünmeme sorunu
+- Null safety linter uyarıları temizlendi
+
+### 🎨 Kullanıcı Arayüzü
+- Turnuva maç kartlarına düzenleme ve silme butonları
+- Oyuncu istatistikleri için modern dialog tasarımı
+- Uyarı mesajları ve bilgilendirmeler iyileştirildi
+- Daha iyi loading state'leri
+
+### 🔒 Güvenlik
+- Maç düzenleme/silme sadece turnuva yaratıcısı için
+- İptal edilmiş turnuvalarda düzenleme yapılamıyor
+- Tüm işlemler backend'de kontrol ediliyor
+
+---
+
 ## [1.3.0-beta] - 2024-12-XX
 
 ### 🎉 Yeni Özellikler

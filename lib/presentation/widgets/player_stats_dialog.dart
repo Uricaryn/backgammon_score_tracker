@@ -87,6 +87,8 @@ class PlayerStatsDialog extends StatelessWidget {
                       Filter('player1', isEqualTo: playerName),
                       Filter('player2', isEqualTo: playerName),
                     ))
+                    .orderBy('timestamp', descending: true)
+                    .limit(200)
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {

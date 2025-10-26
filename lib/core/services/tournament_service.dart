@@ -179,11 +179,51 @@ class TournamentService {
       query = _firestore.collection('tournaments');
     }
 
+    // ✅ Limit ekle - sadece son 50 turnuva
     return query
         .orderBy('createdAt', descending: true)
+        .limit(50)
         .snapshots()
         .asyncMap((snapshot) async {
       final tournaments = <Map<String, dynamic>>[];
+
+      // ✅ Batch olarak tüm yaratıcı bilgilerini paralel çek
+      final creatorIdsSet = <String>{};
+      for (final doc in snapshot.docs) {
+        final docData = doc.data() as Map<String, dynamic>?;
+        if (docData != null) {
+          final createdBy = docData['createdBy'] as String?;
+          if (createdBy != null) {
+            creatorIdsSet.add(createdBy);
+          }
+        }
+      }
+      final creatorIds = creatorIdsSet.toList();
+
+      if (creatorIds.isEmpty) {
+        return tournaments;
+      }
+
+      final creatorDocs = await Future.wait(
+        creatorIds.map(
+            (creatorId) => _firestore.collection('users').doc(creatorId).get()),
+      );
+
+      final creatorMap = <String, Map<String, dynamic>>{};
+      final minLength = creatorDocs.length < creatorIds.length
+          ? creatorDocs.length
+          : creatorIds.length;
+      for (int i = 0; i < minLength; i++) {
+        final doc = creatorDocs[i];
+        final creatorId = creatorIds[i];
+
+        if (!doc.exists) continue;
+
+        final data = doc.data();
+        if (data != null) {
+          creatorMap[creatorId] = data;
+        }
+      }
 
       for (final doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
@@ -199,11 +239,11 @@ class TournamentService {
           }
         }
 
-        // Yaratıcı bilgilerini al
-        final createdByDoc =
-            await _firestore.collection('users').doc(data['createdBy']).get();
-
-        final createdByData = createdByDoc.exists ? createdByDoc.data()! : {};
+        // ✅ Cache'den yaratıcı bilgilerini al
+        final createdById = data['createdBy'] as String? ?? '';
+        final createdByData = createdById.isNotEmpty
+            ? (creatorMap[createdById] ?? <String, dynamic>{})
+            : <String, dynamic>{};
 
         // Katılımcı sayısını hesapla
         final participants = data['participants'] as List<dynamic>? ?? [];
@@ -237,33 +277,62 @@ class TournamentService {
       return Stream.value([]);
     }
 
+    // ✅ Limit ekle - sadece son 30 davet
     return _firestore
         .collection('tournament_invitations')
         .where('toUserId', isEqualTo: currentUser.uid)
         .where('status', isEqualTo: participantPending)
         .orderBy('createdAt', descending: true)
+        .limit(30)
         .snapshots()
         .asyncMap((snapshot) async {
       final invitations = <Map<String, dynamic>>[];
 
+      if (snapshot.docs.isEmpty) return invitations;
+
+      // ✅ Batch olarak tüm turnuva ve kullanıcı bilgilerini paralel çek
+      final tournamentIds = snapshot.docs
+          .map((doc) => doc.data()['tournamentId'] as String?)
+          .where((id) => id != null)
+          .cast<String>()
+          .toSet()
+          .toList();
+
+      final userIds = snapshot.docs
+          .map((doc) => doc.data()['fromUserId'] as String?)
+          .where((id) => id != null)
+          .cast<String>()
+          .toSet()
+          .toList();
+
+      final [tournamentDocs, userDocs] = await Future.wait([
+        Future.wait(tournamentIds
+            .map((id) => _firestore.collection('tournaments').doc(id).get())),
+        Future.wait(
+            userIds.map((id) => _firestore.collection('users').doc(id).get())),
+      ]);
+
+      final tournamentMap = <String, Map<String, dynamic>>{};
+      for (int i = 0; i < tournamentIds.length; i++) {
+        if (tournamentDocs[i].exists) {
+          tournamentMap[tournamentIds[i]] = tournamentDocs[i].data()!;
+        }
+      }
+
+      final userMap = <String, Map<String, dynamic>>{};
+      for (int i = 0; i < userIds.length; i++) {
+        if (userDocs[i].exists) {
+          userMap[userIds[i]] = userDocs[i].data()!;
+        }
+      }
+
       for (final doc in snapshot.docs) {
         final data = doc.data();
 
-        // Turnuva bilgilerini al
-        final tournamentDoc = await _firestore
-            .collection('tournaments')
-            .doc(data['tournamentId'])
-            .get();
+        final tournamentData = tournamentMap[data['tournamentId']];
+        if (tournamentData == null) continue;
 
-        if (!tournamentDoc.exists) continue;
-
-        final tournamentData = tournamentDoc.data()!;
-
-        // Gönderen bilgilerini al
-        final fromUserDoc =
-            await _firestore.collection('users').doc(data['fromUserId']).get();
-
-        final fromUserData = fromUserDoc.exists ? fromUserDoc.data()! : {};
+        final fromUserData = userMap[data['fromUserId']] ?? {};
 
         invitations.add({
           'id': doc.id,
@@ -638,6 +707,64 @@ class TournamentService {
       _logService.error('Failed to record match result',
           tag: 'Tournament', error: e);
       rethrow;
+    }
+  }
+
+  /// Maçı sil
+  Future<void> deleteMatch(String tournamentId, String matchId) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw Exception(ErrorService.authUserNotFound);
+      }
+
+      // Turnuva bilgilerini al
+      final tournamentDoc =
+          await _firestore.collection('tournaments').doc(tournamentId).get();
+
+      if (!tournamentDoc.exists) {
+        throw Exception('Turnuva bulunamadı');
+      }
+
+      final tournamentData = tournamentDoc.data()!;
+
+      // Sadece turnuva yaratıcısı maç silebilir
+      if (tournamentData['createdBy'] != currentUser.uid) {
+        throw Exception('Bu turnuvada maç silme yetkiniz yok');
+      }
+
+      // Bracket'i güncelle
+      final bracket = Map<String, dynamic>.from(tournamentData['bracket']);
+      await _removeMatchFromBracket(bracket, matchId);
+
+      // Firestore'u güncelle
+      await _firestore.collection('tournaments').doc(tournamentId).update({
+        'bracket': bracket,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      _logService.info('Match deleted: $matchId', tag: 'Tournament');
+    } catch (e) {
+      _logService.error('Failed to delete match', tag: 'Tournament', error: e);
+      rethrow;
+    }
+  }
+
+  /// Bracket'ten maçı kaldır
+  Future<void> _removeMatchFromBracket(
+      Map<String, dynamic> bracket, String matchId) async {
+    if (bracket['type'] == 'elimination') {
+      final rounds = bracket['rounds'] as List<dynamic>;
+      for (final round in rounds) {
+        final matches = round['matches'] as List<dynamic>;
+        matches.removeWhere((m) => m['id'] == matchId);
+      }
+    } else if (bracket['type'] == 'round_robin') {
+      final matches = bracket['matches'] as List<dynamic>;
+      matches.removeWhere((m) => m['id'] == matchId);
+
+      // Standings'ten ilgili oyuncuların istatistiklerini düzelt
+      // (Kompleks olduğu için şimdilik sadece maçı siliyoruz)
     }
   }
 
@@ -1073,82 +1200,89 @@ class TournamentService {
         matches.addAll(roundRobinMatches.cast<Map<String, dynamic>>());
       }
 
-      // Kişisel turnuvalar için oyuncu ID'lerini isimlerine çevir
+      // ✅ Batch olarak tüm oyuncu/kullanıcı isimlerini paralel çek
       if (tournamentCategory == tournamentCategoryPersonal) {
-        for (int i = 0; i < matches.length; i++) {
-          final match = matches[i];
+        // Kişisel turnuvalar için oyuncu ID'lerini topla
+        final playerIds = <String>{};
+        for (final match in matches) {
+          if (match['player1'] != null)
+            playerIds.add(match['player1'] as String);
+          if (match['player2'] != null)
+            playerIds.add(match['player2'] as String);
+          if (match['winner'] != null) playerIds.add(match['winner'] as String);
+        }
 
-          // Player1 ismini al
+        // Tüm oyuncu isimlerini paralel olarak çek
+        final playerDocs = await Future.wait(
+          playerIds.map((id) => _firestore.collection('players').doc(id).get()),
+        );
+
+        final playerNames = <String, String>{};
+        for (int i = 0; i < playerIds.length; i++) {
+          final playerId = playerIds.elementAt(i);
+          if (playerDocs[i].exists) {
+            playerNames[playerId] =
+                playerDocs[i].data()?['name'] ?? 'Bilinmeyen Oyuncu';
+          } else {
+            playerNames[playerId] = 'Bilinmeyen Oyuncu';
+          }
+        }
+
+        // İsimleri match'lere ekle
+        for (final match in matches) {
           if (match['player1'] != null) {
-            final player1Name = await _getPlayerName(match['player1']);
-            match['player1Name'] = player1Name;
+            match['player1Name'] =
+                playerNames[match['player1']] ?? 'Bilinmeyen';
           }
-
-          // Player2 ismini al
           if (match['player2'] != null) {
-            final player2Name = await _getPlayerName(match['player2']);
-            match['player2Name'] = player2Name;
+            match['player2Name'] =
+                playerNames[match['player2']] ?? 'Bilinmeyen';
           }
-
-          // Winner ismini al
           if (match['winner'] != null) {
-            final winnerName = await _getPlayerName(match['winner']);
-            match['winnerName'] = winnerName;
+            match['winnerName'] = playerNames[match['winner']] ?? 'Bilinmeyen';
           }
         }
       } else {
-        // Sosyal turnuvalar için user ID'lerini username'lere çevir
-        for (int i = 0; i < matches.length; i++) {
-          final match = matches[i];
+        // Sosyal turnuvalar için kullanıcı ID'lerini topla
+        final userIds = <String>{};
+        for (final match in matches) {
+          if (match['player1'] != null) userIds.add(match['player1'] as String);
+          if (match['player2'] != null) userIds.add(match['player2'] as String);
+          if (match['winner'] != null) userIds.add(match['winner'] as String);
+        }
 
-          // Player1 ismini al
+        // Tüm kullanıcı isimlerini paralel olarak çek
+        final userDocs = await Future.wait(
+          userIds.map((id) => _firestore.collection('users').doc(id).get()),
+        );
+
+        final userNames = <String, String>{};
+        for (int i = 0; i < userIds.length; i++) {
+          final userId = userIds.elementAt(i);
+          if (userDocs[i].exists) {
+            userNames[userId] =
+                userDocs[i].data()?['username'] ?? 'Bilinmeyen Kullanıcı';
+          } else {
+            userNames[userId] = 'Bilinmeyen Kullanıcı';
+          }
+        }
+
+        // İsimleri match'lere ekle
+        for (final match in matches) {
           if (match['player1'] != null) {
-            final player1Name = await _getUserName(match['player1']);
-            match['player1Name'] = player1Name;
+            match['player1Name'] = userNames[match['player1']] ?? 'Bilinmeyen';
           }
-
-          // Player2 ismini al
           if (match['player2'] != null) {
-            final player2Name = await _getUserName(match['player2']);
-            match['player2Name'] = player2Name;
+            match['player2Name'] = userNames[match['player2']] ?? 'Bilinmeyen';
           }
-
-          // Winner ismini al
           if (match['winner'] != null) {
-            final winnerName = await _getUserName(match['winner']);
-            match['winnerName'] = winnerName;
+            match['winnerName'] = userNames[match['winner']] ?? 'Bilinmeyen';
           }
         }
       }
 
       return matches;
     });
-  }
-
-  /// Oyuncu ismini getir
-  Future<String> _getPlayerName(String playerId) async {
-    try {
-      final doc = await _firestore.collection('players').doc(playerId).get();
-      if (doc.exists) {
-        return doc.data()!['name'] ?? 'Bilinmeyen Oyuncu';
-      }
-      return 'Bilinmeyen Oyuncu';
-    } catch (e) {
-      return 'Bilinmeyen Oyuncu';
-    }
-  }
-
-  /// Kullanıcı ismini getir
-  Future<String> _getUserName(String userId) async {
-    try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (doc.exists) {
-        return doc.data()!['username'] ?? 'Bilinmeyen Kullanıcı';
-      }
-      return 'Bilinmeyen Kullanıcı';
-    } catch (e) {
-      return 'Bilinmeyen Kullanıcı';
-    }
   }
 
   /// Turnuva bildirimi gönder

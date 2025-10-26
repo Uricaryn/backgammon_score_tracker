@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:screenshot/screenshot.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/player_stats_dialog.dart';
 import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
 
@@ -9,6 +8,7 @@ class HomeScoreboardCard extends StatefulWidget {
   final bool isGuestUser;
   final ScreenshotController screenshotController;
   final VoidCallback onShare;
+  final Function(String playerName)? onPlayerTap;
 
   const HomeScoreboardCard({
     super.key,
@@ -16,6 +16,7 @@ class HomeScoreboardCard extends StatefulWidget {
     required this.isGuestUser,
     required this.screenshotController,
     required this.onShare,
+    this.onPlayerTap,
   });
 
   @override
@@ -223,6 +224,7 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
               averageScore:
                   _cachedPlayerAverageScores![sortedPlayers[i].key] ?? 0.0,
               isGuestUser: widget.isGuestUser,
+              onPlayerTap: widget.onPlayerTap,
             ),
         ],
       );
@@ -261,6 +263,7 @@ class _ScoreboardItem extends StatelessWidget {
   final int totalGames;
   final double averageScore;
   final bool isGuestUser;
+  final Function(String playerName)? onPlayerTap;
 
   const _ScoreboardItem({
     required this.player,
@@ -268,6 +271,7 @@ class _ScoreboardItem extends StatelessWidget {
     required this.totalGames,
     required this.averageScore,
     required this.isGuestUser,
+    this.onPlayerTap,
   });
 
   @override
@@ -277,7 +281,9 @@ class _ScoreboardItem extends StatelessWidget {
       child: InkWell(
         onTap: isGuestUser
             ? () => _showLoginRequired(context)
-            : () => _showPlayerStats(context),
+            : onPlayerTap != null
+                ? () => onPlayerTap!(player.key)
+                : () => _showPlayerStats(context),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

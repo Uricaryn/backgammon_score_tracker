@@ -335,6 +335,8 @@ class _HomeScreenState extends State<HomeScreen>
                   .collection('notifications')
                   .where('userId', isEqualTo: userId)
                   .where('isRead', isEqualTo: false)
+                  .orderBy('timestamp', descending: true)
+                  .limit(50)
                   .snapshots(),
               builder: (context, snapshot) {
                 int unreadCount = 0;

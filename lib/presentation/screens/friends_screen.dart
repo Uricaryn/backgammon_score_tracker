@@ -1424,6 +1424,7 @@ class _FriendsScreenState extends State<FriendsScreen>
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
       if (currentUserId != null) {
+        // ✅ Limit zaten var (10) - yeterli
         final tournaments = await FirebaseFirestore.instance
             .collection('tournaments')
             .where('participants', arrayContains: currentUserId)

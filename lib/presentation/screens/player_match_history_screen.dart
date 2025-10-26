@@ -32,9 +32,12 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return {};
 
+    // ✅ Limit ekle - son 100 oyunu çek
     final snapshot = await FirebaseFirestore.instance
         .collection('games')
         .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .limit(100)
         .get();
 
     int totalMatches = 0;

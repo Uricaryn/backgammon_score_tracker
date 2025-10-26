@@ -7,7 +7,6 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/utils/number_utils.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/home_scoreboard_card.dart';
-import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 
 class TournamentDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tournament;
@@ -117,58 +116,107 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   }
 
   Widget _buildScoreboardTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _tournamentService.getTournamentMatches(widget.tournament['id']),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tournaments')
+          .doc(widget.tournament['id'])
+          .snapshots(),
+      builder: (context, tournamentSnapshot) {
+        if (tournamentSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Hata: ${snapshot.error}'));
+        if (tournamentSnapshot.hasError) {
+          return Center(child: Text('Hata: ${tournamentSnapshot.error}'));
         }
 
-        final matches = snapshot.data ?? [];
-        final completedMatches =
-            matches.where((m) => m['status'] == 'completed').toList();
-
-        if (completedMatches.isEmpty) {
-          return const Center(
-            child: Text(
-                'Henüz tamamlanmış maç yok. Maç sonuçlarını girdikten sonra skor tablosu görüntülenecek.'),
-          );
+        if (!tournamentSnapshot.hasData || !tournamentSnapshot.data!.exists) {
+          return const Center(child: Text('Turnuva bulunamadı'));
         }
 
-        // Tournament maçlarını HomeScoreboardCard için uygun formata çevir
-        final gameData = _convertMatchesToGameData(completedMatches);
+        final tournamentData =
+            tournamentSnapshot.data!.data() as Map<String, dynamic>;
+        final participants =
+            List<String>.from(tournamentData['participants'] ?? []);
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: HomeScoreboardCard(
-            cachedGameData: gameData,
-            isGuestUser: false, // Tournament kullanıcıları kayıtlı
-            screenshotController: _screenshotController,
-            onShare: _shareScoreboard,
-          ),
+        return StreamBuilder<List<Map<String, dynamic>>>(
+          stream:
+              _tournamentService.getTournamentMatches(widget.tournament['id']),
+          builder: (context, matchesSnapshot) {
+            if (matchesSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (matchesSnapshot.hasError) {
+              return Center(child: Text('Hata: ${matchesSnapshot.error}'));
+            }
+
+            final matches = matchesSnapshot.data ?? [];
+            final completedMatches =
+                matches.where((m) => m['status'] == 'completed').toList();
+
+            // Tüm maçları (completed + pending) kullanarak oyuncu listesi oluştur
+            final allMatches = matches;
+
+            // Tournament maçlarını HomeScoreboardCard için uygun formata çevir
+            return FutureBuilder<Map<String, dynamic>>(
+              future: _convertMatchesToGameDataWithParticipants(
+                completedMatches,
+                allMatches,
+                participants,
+                tournamentData['category'],
+              ),
+              builder: (context, gameDataSnapshot) {
+                if (gameDataSnapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (gameDataSnapshot.hasError) {
+                  return Center(child: Text('Hata: ${gameDataSnapshot.error}'));
+                }
+
+                final gameData = gameDataSnapshot.data ??
+                    {
+                      'data': [],
+                      'lastUpdated': DateTime.now().millisecondsSinceEpoch,
+                    };
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: HomeScoreboardCard(
+                    cachedGameData: gameData,
+                    isGuestUser: false,
+                    screenshotController: _screenshotController,
+                    onShare: _shareScoreboard,
+                    onPlayerTap: (playerName) => _showTournamentPlayerStats(
+                        playerName, completedMatches),
+                  ),
+                );
+              },
+            );
+          },
         );
       },
     );
   }
 
-  // Tournament maçlarını HomeScoreboardCard için uygun formata çevir
-  Map<String, dynamic> _convertMatchesToGameData(
-      List<Map<String, dynamic>> matches) {
+  // Tournament maçlarını tüm katılımcıları içerecek şekilde çevir
+  Future<Map<String, dynamic>> _convertMatchesToGameDataWithParticipants(
+    List<Map<String, dynamic>> completedMatches,
+    List<Map<String, dynamic>> allMatches,
+    List<String> participants,
+    String? tournamentCategory,
+  ) async {
     final gameDataList = <Map<String, dynamic>>[];
 
-    for (final match in matches) {
-      final player1Name =
-          match['player1Name'] ?? match['player1'] ?? 'Bilinmeyen';
-      final player2Name =
-          match['player2Name'] ?? match['player2'] ?? 'Bilinmeyen';
+    // Tamamlanmış maçları ekle
+    for (final match in completedMatches) {
+      final player1Name = match['player1Name'] ?? match['player1'];
+      final player2Name = match['player2Name'] ?? match['player2'];
       final winnerScore = NumberUtils.safeParseInt(match['winnerScore']) ?? 0;
       final loserScore = NumberUtils.safeParseInt(match['loserScore']) ?? 0;
 
-      // Kazanan ve kaybedeni belirle
       final isPlayer1Winner = match['winner'] == match['player1'];
       final player1Score = isPlayer1Winner ? winnerScore : loserScore;
       final player2Score = isPlayer1Winner ? loserScore : winnerScore;
@@ -182,6 +230,54 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
       });
     }
 
+    // Hiç maçı olmayan katılımcıları tespit et ve dummy maçlar ekle
+    final playersInMatches = <String>{};
+    for (final match in allMatches) {
+      if (match['player1Name'] != null) {
+        playersInMatches.add(match['player1Name'] as String);
+      }
+      if (match['player2Name'] != null) {
+        playersInMatches.add(match['player2Name'] as String);
+      }
+    }
+
+    // Katılımcıların isimlerini al
+    final category =
+        tournamentCategory ?? TournamentService.tournamentCategorySocial;
+    for (final participantId in participants) {
+      String playerName;
+
+      if (category == TournamentService.tournamentCategoryPersonal) {
+        // Kişisel turnuva - oyuncu ismi
+        final doc = await FirebaseFirestore.instance
+            .collection('players')
+            .doc(participantId)
+            .get();
+        playerName =
+            doc.exists ? (doc.data()?['name'] ?? participantId) : participantId;
+      } else {
+        // Sosyal turnuva - kullanıcı adı
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(participantId)
+            .get();
+        playerName = doc.exists
+            ? (doc.data()?['username'] ?? participantId)
+            : participantId;
+      }
+
+      // Eğer bu oyuncu hiç maça çıkmamışsa, 0-0 dummy maç ekle
+      if (!playersInMatches.contains(playerName)) {
+        gameDataList.add({
+          'player1': playerName,
+          'player2': 'Henüz maç yok',
+          'player1Score': 0,
+          'player2Score': 0,
+          'timestamp': null,
+        });
+      }
+    }
+
     return {
       'data': gameDataList,
       'lastUpdated': DateTime.now().millisecondsSinceEpoch,
@@ -192,6 +288,159 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
     // Scoreboard paylaşım fonksiyonu
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Skor tablosu paylaşıldı!')),
+    );
+  }
+
+  // Turnuva içinde oyuncu istatistiklerini göster
+  void _showTournamentPlayerStats(
+      String playerName, List<Map<String, dynamic>> matches) {
+    // Oyuncunun turnuva içindeki istatistiklerini hesapla
+    int totalMatches = 0;
+    int wins = 0;
+    int totalScore = 0;
+    int highestScore = 0;
+    Map<String, int> opponentWins = {};
+    List<Map<String, dynamic>> playerMatches = [];
+
+    for (final match in matches) {
+      final player1Name = match['player1Name'] ?? match['player1'] ?? '';
+      final player2Name = match['player2Name'] ?? match['player2'] ?? '';
+
+      if (player1Name != playerName && player2Name != playerName) continue;
+
+      totalMatches++;
+      final isPlayer1 = player1Name == playerName;
+
+      final winnerScore = NumberUtils.safeParseInt(match['winnerScore']) ?? 0;
+      final loserScore = NumberUtils.safeParseInt(match['loserScore']) ?? 0;
+
+      final player1Score =
+          (match['winner'] == match['player1']) ? winnerScore : loserScore;
+      final player2Score =
+          (match['winner'] == match['player2']) ? winnerScore : loserScore;
+
+      final score = isPlayer1 ? player1Score : player2Score;
+      final opponent = isPlayer1 ? player2Name : player1Name;
+
+      totalScore += score;
+      if (score > highestScore) {
+        highestScore = score;
+      }
+
+      if ((isPlayer1 && match['winner'] == match['player1']) ||
+          (!isPlayer1 && match['winner'] == match['player2'])) {
+        wins++;
+        opponentWins[opponent] = (opponentWins[opponent] ?? 0) + 1;
+      }
+
+      playerMatches.add({
+        'opponent': opponent,
+        'score': score,
+        'opponentScore': isPlayer1 ? player2Score : player1Score,
+        'won': (isPlayer1 && match['winner'] == match['player1']) ||
+            (!isPlayer1 && match['winner'] == match['player2']),
+        'timestamp': match['completedAt'],
+      });
+    }
+
+    // En çok yenilen rakip
+    String mostBeatenOpponent = '';
+    int maxWins = 0;
+    opponentWins.forEach((opponent, winsCount) {
+      if (winsCount > maxWins) {
+        maxWins = winsCount;
+        mostBeatenOpponent = opponent;
+      }
+    });
+
+    final winRate = totalMatches > 0 ? (wins / totalMatches * 100) : 0.0;
+    final avgScore = totalMatches > 0 ? (totalScore / totalMatches) : 0.0;
+
+    // İstatistikleri dialog'da göster
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$playerName - Turnuva İstatistikleri'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStatRow('Toplam Maç', totalMatches.toString()),
+              _buildStatRow('Kazanılan', wins.toString()),
+              _buildStatRow('Kaybedilen', (totalMatches - wins).toString()),
+              _buildStatRow('Kazanma Oranı', '${winRate.toStringAsFixed(1)}%'),
+              _buildStatRow('Toplam Puan', totalScore.toString()),
+              _buildStatRow('Ortalama Puan', avgScore.toStringAsFixed(1)),
+              _buildStatRow('En Yüksek Puan', highestScore.toString()),
+              if (mostBeatenOpponent.isNotEmpty)
+                _buildStatRow(
+                    'En Çok Yenilen', '$mostBeatenOpponent ($maxWins)'),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Maç Geçmişi',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              ...playerMatches.map((match) => Card(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'vs ${match['opponent']}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          Text(
+                            '${match['score']} - ${match['opponentScore']}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: match['won'] ? Colors.green : Colors.red,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            match['won'] ? Icons.check_circle : Icons.cancel,
+                            size: 16,
+                            color: match['won'] ? Colors.green : Colors.red,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(value,
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ],
+      ),
     );
   }
 
@@ -455,8 +704,10 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
     );
   }
 
-  Widget _buildMatchCard(Map<String, dynamic> match) {
-    final isCompleted = match['status'] == 'completed';
+  Widget _buildCompletedMatchCard(Map<String, dynamic> match) {
+    final isCreator = widget.tournament['isCreator'] == true;
+    final canEdit = isCreator &&
+        widget.tournament['status'] != TournamentService.tournamentCancelled;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -465,135 +716,93 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (match['round'] != null) ...[
-              Text(
-                'Round ${match['round']}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 4),
-            ],
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    match['player1Name'] ?? match['player1'] ?? 'TBD',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isCompleted && match['winner'] == match['player1']
-                          ? Colors.green
-                          : null,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (match['round'] != null) ...[
+                        Text(
+                          'Round ${match['round']}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              match['player1Name'] ?? match['player1'] ?? 'TBD',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: match['winner'] == match['player1']
+                                    ? Colors.green
+                                    : Colors.red,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            ' ${match['player1'] == match['winner'] ? match['winnerScore'] : match['loserScore']} - ${match['player2'] == match['winner'] ? match['winnerScore'] : match['loserScore']} ',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              match['player2Name'] ?? match['player2'] ?? 'TBD',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: match['winner'] == match['player2']
+                                    ? Colors.green
+                                    : Colors.red,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (match['completedAt'] != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Tamamlandı: ${_formatDate(match['completedAt'])}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const Text(' vs '),
-                Expanded(
-                  child: Text(
-                    match['player2Name'] ?? match['player2'] ?? 'TBD',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isCompleted && match['winner'] == match['player2']
-                          ? Colors.green
-                          : null,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (isCompleted) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Sonuç: ${match['winnerScore']} - ${match['loserScore']}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
+                if (canEdit) ...[
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        onPressed: () => _showEditMatchResultDialog(match),
+                        tooltip: 'Sonucu Düzenle',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.delete,
+                            size: 20, color: Colors.red),
+                        onPressed: () => _showDeleteMatchDialog(match),
+                        tooltip: 'Maçı Sil',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ] else ...[
-              const SizedBox(height: 8),
-              const Text(
-                'Bekliyor...',
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCompletedMatchCard(Map<String, dynamic> match) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (match['round'] != null) ...[
-              Text(
-                'Round ${match['round']}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 4),
-            ],
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    match['player1Name'] ?? match['player1'] ?? 'TBD',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: match['winner'] == match['player1']
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                  ),
-                ),
-                Text(
-                  ' ${match['player1'] == match['winner'] ? match['winnerScore'] : match['loserScore']} - ${match['player2'] == match['winner'] ? match['winnerScore'] : match['loserScore']} ',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    match['player2Name'] ?? match['player2'] ?? 'TBD',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: match['winner'] == match['player2']
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                  ),
-                ),
               ],
             ),
-            if (match['completedAt'] != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Tamamlandı: ${_formatDate(match['completedAt'])}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
           ],
         ),
       ),
@@ -659,6 +868,214 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
     );
   }
 
+  void _showEditMatchResultDialog(Map<String, dynamic> match) {
+    // Mevcut skorları al
+    final player1Score = match['player1'] == match['winner']
+        ? match['winnerScore']
+        : match['loserScore'];
+    final player2Score = match['player2'] == match['winner']
+        ? match['winnerScore']
+        : match['loserScore'];
+
+    final player1Controller =
+        TextEditingController(text: player1Score?.toString() ?? '');
+    final player2Controller =
+        TextEditingController(text: player2Score?.toString() ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Maç Sonucunu Düzenle'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+                '${match['player1Name'] ?? match['player1']} vs ${match['player2Name'] ?? match['player2']}'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: player1Controller,
+                    decoration: InputDecoration(
+                      labelText: match['player1Name'] ?? match['player1'],
+                      hintText: 'Skor',
+                      border: const OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    autofocus: true,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    controller: player2Controller,
+                    decoration: InputDecoration(
+                      labelText: match['player2Name'] ?? match['player2'],
+                      hintText: 'Skor',
+                      border: const OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      color: Colors.orange, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Maç sonucunu değiştirmek turnuva istatistiklerini etkileyecektir.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
+          ElevatedButton(
+            onPressed: () => _saveMatchResult(
+              match,
+              player1Controller.text,
+              player2Controller.text,
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Güncelle'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteMatchDialog(Map<String, dynamic> match) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Maçı Sil'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Bu maçı silmek istediğinizden emin misiniz?',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${match['player1Name'] ?? match['player1']} vs ${match['player2Name'] ?? match['player2']}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sonuç: ${match['player1'] == match['winner'] ? match['winnerScore'] : match['loserScore']} - ${match['player2'] == match['winner'] ? match['winnerScore'] : match['loserScore']}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.warning, color: Colors.red, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Bu işlem geri alınamaz!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('İptal'),
+          ),
+          ElevatedButton(
+            onPressed: () => _deleteMatch(match),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteMatch(Map<String, dynamic> match) async {
+    try {
+      await _tournamentService.deleteMatch(
+        widget.tournament['id'],
+        match['id'],
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Maç başarıyla silindi!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hata: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _saveMatchResult(
     Map<String, dynamic> match,
     String player1Score,
@@ -702,39 +1119,6 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
           ),
         );
       }
-    }
-  }
-
-  Future<String> _getPlayerName(String? playerId) async {
-    if (playerId == null) return 'TBD';
-
-    try {
-      final category = widget.tournament['category'] ??
-          TournamentService.tournamentCategorySocial;
-
-      if (category == TournamentService.tournamentCategoryPersonal) {
-        // Kişisel turnuva - oyuncu ismi
-        final doc = await FirebaseFirestore.instance
-            .collection('players')
-            .doc(playerId)
-            .get();
-        if (doc.exists) {
-          return doc.data()!['name'] ?? 'Bilinmeyen Oyuncu';
-        }
-      } else {
-        // Sosyal turnuva - kullanıcı adı
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(playerId)
-            .get();
-        if (doc.exists) {
-          return doc.data()!['username'] ?? 'Bilinmeyen Kullanıcı';
-        }
-      }
-
-      return 'Bilinmeyen';
-    } catch (e) {
-      return 'Bilinmeyen';
     }
   }
 
@@ -1343,7 +1727,6 @@ class _AddMatchDialog extends StatefulWidget {
 }
 
 class _AddMatchDialogState extends State<_AddMatchDialog> {
-  final TournamentService _tournamentService = TournamentService();
   String? _selectedPlayer1;
   String? _selectedPlayer2;
   bool _isLoading = false;
