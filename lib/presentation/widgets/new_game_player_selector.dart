@@ -110,8 +110,8 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-              Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+              Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ],
           ),
         ),
@@ -138,7 +138,7 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -184,7 +184,7 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
               color: Theme.of(context)
                   .colorScheme
                   .primaryContainer
-                  .withOpacity(0.3),
+                  .withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -225,11 +225,11 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
             color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
             ),
           ),
           child: DropdownButtonFormField<String>(
-            value: widget.selectedPlayer1,
+            initialValue: widget.selectedPlayer1,
             decoration: InputDecoration(
               labelText: '1. Oyuncu',
               border: InputBorder.none,
@@ -259,11 +259,11 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
             color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
             ),
           ),
           child: DropdownButtonFormField<String>(
-            value: widget.selectedPlayer2,
+            initialValue: widget.selectedPlayer2,
             decoration: InputDecoration(
               labelText: '2. Oyuncu',
               border: InputBorder.none,
@@ -295,7 +295,7 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -303,7 +303,7 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
           Icon(
             Icons.people_outline,
             size: 48,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
@@ -422,6 +422,7 @@ class _NewGamePlayerSelectorState extends State<NewGamePlayerSelector> {
         Navigator.pop(context);
         _needsRefresh = true;
         await _loadPlayerNames();
+        if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

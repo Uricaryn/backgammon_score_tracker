@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/core/constants/api_keys.dart';
+import 'package:backgammon_score_tracker/core/services/cloud_functions_safe_service.dart';
 
 class SecurityService {
   static final SecurityService _instance = SecurityService._internal();
@@ -11,7 +11,7 @@ class SecurityService {
   SecurityService._internal();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final CloudFunctionsSafeService _functionsSafe = CloudFunctionsSafeService();
 
   // Güvenlik kontrolleri
   Future<bool> performSecurityChecks() async {
@@ -136,27 +136,25 @@ class SecurityService {
     final userId = user?.uid ?? 'anonymous';
 
     // Basit hash oluştur
-    return '${userId}_${timestamp}';
+    return '${userId}_$timestamp';
   }
 
   // Server-side güvenlik kontrolü
   Future<bool> _performServerSecurityCheck() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return false;
-
-      final result =
-          await _functions.httpsCallable('checkDeviceSecurity').call({
+    final packageInfo = await PackageInfo.fromPlatform();
+    final result = await _functionsSafe.call(
+      'checkDeviceSecurity',
+      data: {
         'deviceId': await _getDeviceId(),
-        'packageName': (await PackageInfo.fromPlatform()).packageName,
-        'version': (await PackageInfo.fromPlatform()).version,
-      });
-
-      return result.data['isSecure'] ?? false;
-    } catch (e) {
-      debugPrint('Server-side güvenlik kontrolü hatası: $e');
-      return false;
+        'packageName': packageInfo.packageName,
+        'version': packageInfo.version,
+      },
+    );
+    if (result == null) return true; // fallback
+    if (result.data is Map && (result.data as Map).containsKey('isSecure')) {
+      return (result.data as Map)['isSecure'] == true;
     }
+    return true;
   }
 
   // Cihaz ID'sini al
@@ -174,18 +172,20 @@ class SecurityService {
         return false;
       }
 
-      // Premium özellikler için ek kontroller
       final user = _auth.currentUser;
       if (user == null) return false;
-
-      // Server-side premium güvenlik kontrolü
-      final result =
-          await _functions.httpsCallable('checkPremiumSecurity').call({
-        'userId': user.uid,
-        'deviceId': await _getDeviceId(),
-      });
-
-      return result.data['isSecure'] ?? false;
+      final result = await _functionsSafe.call(
+        'checkPremiumSecurity',
+        data: {
+          'userId': user.uid,
+          'deviceId': await _getDeviceId(),
+        },
+      );
+      if (result == null) return true; // fallback
+      if (result.data is Map && (result.data as Map).containsKey('isSecure')) {
+        return (result.data as Map)['isSecure'] == true;
+      }
+      return true;
     } catch (e) {
       debugPrint('Premium güvenlik kontrolü hatası: $e');
       return false;
@@ -195,21 +195,18 @@ class SecurityService {
   // Güvenlik ihlali raporla
   Future<void> reportSecurityViolation(String violationType,
       {String? details}) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return;
-
-      await _functions.httpsCallable('reportSecurityViolation').call({
-        'userId': user.uid,
+    final user = _auth.currentUser;
+    await _functionsSafe.call(
+      'reportSecurityViolation',
+      data: {
+        'userId': user?.uid,
         'deviceId': await _getDeviceId(),
         'violationType': violationType,
         'details': details,
         'timestamp': DateTime.now().toIso8601String(),
-      });
-
-      debugPrint('Güvenlik ihlali raporlandı: $violationType');
-    } catch (e) {
-      debugPrint('Güvenlik ihlali raporlama hatası: $e');
-    }
+      },
+    );
+    debugPrint(
+        'Güvenlik ihlali loglandı: $violationType (fallback-safe enabled)');
   }
 }

@@ -32,14 +32,21 @@ class AppTheme {
   static const boardLightColor = Color(0xFFF5E6D3); // Açık bej
   static const boardDarkColor = Color(0xFF8B4513); // Kahverengi
   static const boardBorderColor = Color(0xFF654321); // Koyu kahverengi
+  static const boardTriangleDark = Color(0xFF8B2500); // Koyu kırmızı-kahverengi
+  static const boardTriangleLight = Color(0xFFF5DEB3); // Buğday/krem
+  static const boardWoodGrain = Color(0xFFDEB887); // Burlywood
+  static const boardFrameOuter = Color(0xFF3E2723); // Çok koyu kahve
+  static const boardFrameInner = Color(0xFFA1887F); // Açık kahve iç çerçeve
 
-  // Dark Mode Backgammon Board Colors - Daha soft
-  static const darkBoardLightColor =
-      Color(0xFF4A4A4A); // Daha açık gri (önceden 3A3A3A)
-  static const darkBoardDarkColor =
-      Color(0xFF6D5D4E); // Daha açık kahverengi (önceden 5D4037)
-  static const darkBoardBorderColor =
-      Color(0xFF9D8E83); // Daha açık kahverengi (önceden 8D6E63)
+  // Dark Mode Backgammon Board Colors
+  static const darkBoardLightColor = Color(0xFF4A4A4A);
+  static const darkBoardDarkColor = Color(0xFF6D5D4E);
+  static const darkBoardBorderColor = Color(0xFF9D8E83);
+  static const darkBoardTriangleDark = Color(0xFF6D3A2E);
+  static const darkBoardTriangleLight = Color(0xFF5C5347);
+  static const darkBoardWoodGrain = Color(0xFF5D4E42);
+  static const darkBoardFrameOuter = Color(0xFF2C2C2C);
+  static const darkBoardFrameInner = Color(0xFF6D6D6D);
 
   static InputDecorationTheme get _inputDecorationTheme => InputDecorationTheme(
         border: OutlineInputBorder(
@@ -68,7 +75,6 @@ class AppTheme {
         primary: primaryColor,
         secondary: secondaryColor,
         tertiary: tertiaryColor,
-        background: backgroundColor,
         surface: surfaceColor,
         error: errorColor,
         brightness: Brightness.light,
@@ -78,34 +84,32 @@ class AppTheme {
         brightness: Brightness.dark,
         primary: darkPrimaryColor,
         onPrimary: Colors.black,
-        primaryContainer: darkPrimaryColor.withOpacity(0.2),
+        primaryContainer: darkPrimaryColor.withValues(alpha: 0.2),
         onPrimaryContainer: darkPrimaryColor,
         secondary: darkSecondaryColor,
         onSecondary: Colors.white,
-        secondaryContainer: darkSecondaryColor.withOpacity(0.2),
+        secondaryContainer: darkSecondaryColor.withValues(alpha: 0.2),
         onSecondaryContainer: darkSecondaryColor,
         tertiary: darkTertiaryColor,
         onTertiary: Colors.white,
-        tertiaryContainer: darkTertiaryColor.withOpacity(0.2),
+        tertiaryContainer: darkTertiaryColor.withValues(alpha: 0.2),
         onTertiaryContainer: darkTertiaryColor,
         error: darkErrorColor,
         onError: Colors.white,
-        errorContainer: darkErrorColor.withOpacity(0.2),
+        errorContainer: darkErrorColor.withValues(alpha: 0.2),
         onErrorContainer: darkErrorColor,
-        background: darkBackgroundColor,
-        onBackground: darkOnSurfaceColor,
         surface: darkSurfaceColor,
         onSurface: darkOnSurfaceColor,
-        surfaceVariant: darkSurfaceVariantColor,
+        surfaceContainerHighest: darkSurfaceVariantColor,
         onSurfaceVariant: darkOnSurfaceVariantColor,
         outline: darkOutlineColor,
-        outlineVariant: darkOutlineColor.withOpacity(0.5),
-        shadow: Colors.black.withOpacity(0.3),
-        scrim: Colors.black.withOpacity(0.5),
+        outlineVariant: darkOutlineColor.withValues(alpha: 0.5),
+        shadow: Colors.black.withValues(alpha: 0.3),
+        scrim: Colors.black.withValues(alpha: 0.5),
         inverseSurface: Colors.white,
         onInverseSurface: Colors.black,
-        inversePrimary: darkPrimaryColor.withOpacity(0.8),
-        surfaceTint: darkPrimaryColor.withOpacity(0.1),
+        inversePrimary: darkPrimaryColor.withValues(alpha: 0.8),
+        surfaceTint: darkPrimaryColor.withValues(alpha: 0.1),
       );
 
   static ThemeData get lightTheme => ThemeData(
@@ -130,15 +134,15 @@ class AppTheme {
         inputDecorationTheme: _inputDecorationTheme,
         filledButtonTheme: _filledButtonTheme,
         appBarTheme: AppBarTheme(
-          backgroundColor: darkSurfaceColor.withOpacity(0.95),
+          backgroundColor: darkSurfaceColor.withValues(alpha: 0.95),
           foregroundColor: darkPrimaryColor,
           elevation: 0,
           centerTitle: true,
           surfaceTintColor: Colors.transparent,
         ),
         scaffoldBackgroundColor: darkBackgroundColor,
-        shadowColor: Colors.black.withOpacity(0.2),
-        dividerColor: darkOutlineColor.withOpacity(0.3),
+        shadowColor: Colors.black.withValues(alpha: 0.2),
+        dividerColor: darkOutlineColor.withValues(alpha: 0.3),
       );
 
   // Backgammon Board Colors based on theme
@@ -157,18 +161,43 @@ class AppTheme {
     return isDark ? darkBoardBorderColor : boardBorderColor;
   }
 
+  static Color getBoardTriangleDark(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? darkBoardTriangleDark : boardTriangleDark;
+  }
+
+  static Color getBoardTriangleLight(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? darkBoardTriangleLight : boardTriangleLight;
+  }
+
+  static Color getBoardWoodGrain(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? darkBoardWoodGrain : boardWoodGrain;
+  }
+
+  static Color getBoardFrameOuter(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? darkBoardFrameOuter : boardFrameOuter;
+  }
+
+  static Color getBoardFrameInner(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? darkBoardFrameInner : boardFrameInner;
+  }
+
   // Gradient Colors for Cards
   static List<Color> getCardGradientColors(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (isDark) {
       return [
-        darkSurfaceColor.withOpacity(0.9), // Daha yüksek opacity
-        darkSurfaceColor.withOpacity(0.7), // Daha yüksek opacity
+        darkSurfaceColor.withValues(alpha: 0.9), // Daha yüksek opacity
+        darkSurfaceColor.withValues(alpha: 0.7), // Daha yüksek opacity
       ];
     } else {
       return [
-        surfaceColor.withOpacity(0.8),
-        surfaceColor.withOpacity(0.6),
+        surfaceColor.withValues(alpha: 0.8),
+        surfaceColor.withValues(alpha: 0.6),
       ];
     }
   }
@@ -179,12 +208,12 @@ class AppTheme {
     if (isDark) {
       return [
         darkBackgroundColor,
-        darkBackgroundColor.withOpacity(0.98), // Daha yüksek opacity
+        darkBackgroundColor.withValues(alpha: 0.98), // Daha yüksek opacity
       ];
     } else {
       return [
         backgroundColor,
-        backgroundColor.withOpacity(0.9),
+        backgroundColor.withValues(alpha: 0.9),
       ];
     }
   }

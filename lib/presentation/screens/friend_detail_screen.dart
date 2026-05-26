@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_container.dart';
-import 'package:backgammon_score_tracker/core/services/match_challenge_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -20,7 +19,6 @@ class FriendDetailScreen extends StatefulWidget {
 
 class _FriendDetailScreenState extends State<FriendDetailScreen>
     with SingleTickerProviderStateMixin {
-  final MatchChallengeService _challengeService = MatchChallengeService();
   final LogService _logService = LogService();
 
   late TabController _tabController;
@@ -237,7 +235,7 @@ class _FriendDetailScreenState extends State<FriendDetailScreen>
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: TabBar(

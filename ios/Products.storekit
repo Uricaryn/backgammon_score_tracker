@@ -1,0 +1,53 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "TavlaSkorProducts",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "19.99",
+      "familyShareable" : false,
+      "internalID" : "premium_monthly_local",
+      "localizations" : [
+        {
+          "description" : "1 ay premium erişim",
+          "displayName" : "Aylık Premium",
+          "locale" : "tr"
+        },
+        {
+          "description" : "1 month premium access",
+          "displayName" : "Monthly Premium",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "premium_monthly",
+      "referenceName" : "premium_monthly",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "tr",
+    "_storefront" : "TUR",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

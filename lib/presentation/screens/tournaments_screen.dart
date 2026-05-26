@@ -6,7 +6,6 @@ import 'package:backgammon_score_tracker/core/services/tournament_service.dart';
 import 'package:backgammon_score_tracker/core/services/friendship_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
-import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/presentation/screens/tournament_detail_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
@@ -27,10 +26,11 @@ class _TournamentsScreenState extends State<TournamentsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TournamentService _tournamentService = TournamentService();
-  final FriendshipService _friendshipService = FriendshipService();
   final PremiumService _premiumService = PremiumService();
 
   bool _isGuestUser = false;
+  Future<bool>? _premiumAccessFuture;
+  StreamSubscription<bool>? _premiumActivatedSub;
 
   @override
   void initState() {
@@ -40,7 +40,22 @@ class _TournamentsScreenState extends State<TournamentsScreen>
       vsync: this,
       initialIndex: widget.initialTab ?? 0,
     );
+    _premiumAccessFuture = _premiumService.hasPremiumAccess();
+    _premiumActivatedSub =
+        _premiumService.premiumActivatedStream.listen((active) {
+      if (active && mounted) {
+        setState(() {
+          _premiumAccessFuture = _premiumService.hasPremiumAccess();
+        });
+      }
+    });
     _checkUserType();
+  }
+
+  void _refreshPremiumAccessFuture() {
+    setState(() {
+      _premiumAccessFuture = _premiumService.hasPremiumAccess();
+    });
   }
 
   void _checkUserType() {
@@ -52,6 +67,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
 
   @override
   void dispose() {
+    _premiumActivatedSub?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -121,7 +137,6 @@ class _TournamentsScreenState extends State<TournamentsScreen>
             child: LayoutBuilder(
               builder: (context, constraints) {
                 // Tab genişliklerini hesapla ve scrollable olup olmayacağını belirle
-                final screenWidth = MediaQuery.of(context).size.width;
                 final availableWidth = constraints.maxWidth;
 
                 // Tab metinlerinin tahmini genişlikleri
@@ -263,7 +278,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
 
   Widget _buildSocialTournamentsTab() {
     return FutureBuilder<bool>(
-      future: _premiumService.hasPremiumAccess(),
+      future: _premiumAccessFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -301,14 +316,17 @@ class _TournamentsScreenState extends State<TournamentsScreen>
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: () {
-                        Navigator.push(
+                      onPressed: () async {
+                        final activated = await Navigator.push<bool>(
                           context,
                           MaterialPageRoute(
                             builder: (context) =>
                                 PremiumUpgradeScreen(source: 'tournaments'),
                           ),
                         );
+                        if (activated == true && mounted) {
+                          _refreshPremiumAccessFuture();
+                        }
                       },
                       icon: const Icon(Icons.star),
                       label: const Text('Premium\'a Yükselt'),
@@ -791,7 +809,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
 
   Widget _buildCreateTab() {
     return FutureBuilder<bool>(
-      future: _premiumService.hasPremiumAccess(),
+      future: _premiumAccessFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -1140,12 +1158,15 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
   String _selectedType = TournamentService.tournamentTypeElimination;
   int _maxParticipants = 4;
   List<Map<String, dynamic>> _friends = [];
-  List<String> _selectedFriends = [];
+  final List<String> _selectedFriends = [];
   List<Map<String, dynamic>> _players = [];
-  List<String> _selectedPlayers = [];
+  final List<String> _selectedPlayers = [];
   bool _isLoading = false;
   bool _isLoadingFriends = false;
   bool _isLoadingPlayers = false;
+  bool _isOnline = false;
+  String _scoringMode = TournamentService.scoringModeSimple;
+  int _targetScore = 5;
   StreamSubscription? _friendsSubscription;
 
   @override
@@ -1238,11 +1259,11 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    print(
+    debugPrint(
         '🔵 Dialog build - isLoadingFriends: $_isLoadingFriends, friends count: ${_friends.length}');
-    print(
+    debugPrint(
         '🔵 Selected type: $_selectedType, max participants: $_maxParticipants');
-    print('🔵 Form key: $_formKey');
+    debugPrint('🔵 Form key: $_formKey');
 
     return AlertDialog(
       title: Text(widget.isPersonal
@@ -1280,7 +1301,7 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _selectedType,
+                  initialValue: _selectedType,
                   decoration: const InputDecoration(
                     labelText: 'Turnuva Tipi',
                   ),
@@ -1302,7 +1323,7 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<int>(
-                  value: _maxParticipants,
+                  initialValue: _maxParticipants,
                   decoration: const InputDecoration(
                     labelText: 'Maksimum Katılımcı',
                   ),
@@ -1313,6 +1334,57 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
                     });
                   },
                 ),
+                if (!widget.isPersonal) ...[
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Online Turnuva'),
+                    subtitle: const Text(
+                      'Maclar canli tavla odasinda oynanir',
+                    ),
+                    value: _isOnline,
+                    onChanged: (v) => setState(() => _isOnline = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (_isOnline) ...[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _scoringMode,
+                      decoration: const InputDecoration(
+                        labelText: 'Puanlama Modu',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'simple',
+                          child: Text('Basit (Her oyun 1 puan)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'backgammon',
+                          child: Text(
+                              'Tavla Kurallari (Normal:1, Mars:2, Kapi:3)'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _scoringMode = v);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<int>(
+                      initialValue: _targetScore,
+                      decoration: const InputDecoration(
+                        labelText: 'Hedef Puan',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 3, child: Text('3 Puan')),
+                        DropdownMenuItem(value: 5, child: Text('5 Puan')),
+                        DropdownMenuItem(value: 7, child: Text('7 Puan')),
+                        DropdownMenuItem(value: 11, child: Text('11 Puan')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _targetScore = v);
+                      },
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 16),
                 if (widget.isPersonal) ...[
                   // Kişisel turnuva - oyuncu seçimi
@@ -1510,6 +1582,9 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
         maxParticipants: _maxParticipants,
         invitedFriends: widget.isPersonal ? null : _selectedFriends,
         selectedPlayers: widget.isPersonal ? _selectedPlayers : null,
+        isOnline: _isOnline,
+        scoringMode: _scoringMode,
+        targetScore: _targetScore,
       );
 
       if (mounted) {
@@ -1583,9 +1658,9 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
             child: const Text('İptal'),
           ),
           FilledButton.icon(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.push(
+              await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                   builder: (context) =>

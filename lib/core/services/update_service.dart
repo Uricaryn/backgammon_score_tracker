@@ -52,6 +52,7 @@ class UpdateService {
           tag: 'UpdateService');
 
       if (currentVersionCode < latestVersionCode) {
+        if (!context.mounted) return;
         _showUpdateDialog(context, forceUpdate, updateMessage, playStoreUrl);
       }
     } catch (e) {
@@ -71,7 +72,7 @@ class UpdateService {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -111,10 +112,10 @@ class UpdateService {
                 color: Theme.of(context)
                     .colorScheme
                     .primaryContainer
-                    .withOpacity(0.3),
+                    .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                 ),
               ),
               child: Row(

@@ -37,12 +37,12 @@ class BackgroundBoard extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: isDark
                       ? [
-                          Colors.black.withOpacity(0.3),
-                          Colors.black.withOpacity(0.5),
+                          Colors.black.withValues(alpha: 0.3),
+                          Colors.black.withValues(alpha: 0.5),
                         ]
                       : [
-                          Colors.black.withOpacity(0.1),
-                          Colors.black.withOpacity(0.3),
+                          Colors.black.withValues(alpha: 0.1),
+                          Colors.black.withValues(alpha: 0.3),
                         ],
                 ),
               ),

@@ -41,11 +41,11 @@ class BackgammonBoardPainter extends CustomPainter {
 
     final paint = Paint()
       ..style = PaintingStyle.fill
-      ..color = boardLightColor.withOpacity(opacity);
+      ..color = boardLightColor.withValues(alpha: opacity);
 
     final borderPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..color = boardBorderColor.withOpacity(opacity)
+      ..color = boardBorderColor.withValues(alpha: opacity)
       ..strokeWidth = isDark ? 1.5 : 2.0; // Dark mode'da daha ince border
 
     // Draw the main board
@@ -78,7 +78,7 @@ class BackgammonBoardPainter extends CustomPainter {
       final isEven = i % 2 == 0;
       final trianglePaint = Paint()
         ..style = PaintingStyle.fill
-        ..color = (isEven ? boardDarkColor : boardLightColor).withOpacity(isDark
+        ..color = (isEven ? boardDarkColor : boardLightColor).withValues(alpha: isDark
             ? opacity * 0.7
             : opacity); // Dark mode'da daha düşük opacity
 
@@ -91,7 +91,7 @@ class BackgammonBoardPainter extends CustomPainter {
     // Draw the bar with theme-aware color
     final barPaint = Paint()
       ..style = PaintingStyle.fill
-      ..color = boardBorderColor.withOpacity(isDark ? opacity * 0.8 : opacity);
+      ..color = boardBorderColor.withValues(alpha: isDark ? opacity * 0.8 : opacity);
 
     final barRect = Rect.fromLTWH(
       size.width / 2 - (isDark ? 1.5 : 2), // Dark mode'da daha ince bar

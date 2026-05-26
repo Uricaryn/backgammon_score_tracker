@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,6 +7,8 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_container.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
+import 'package:backgammon_score_tracker/core/auth/auth_verification.dart';
+import 'package:backgammon_score_tracker/core/auth/post_auth_navigation.dart';
 
 class UsernameSetupScreen extends StatefulWidget {
   const UsernameSetupScreen({super.key});
@@ -20,6 +24,29 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
   bool _isLoading = false;
   bool _isCheckingAvailability = false;
   String? _availabilityMessage;
+  int _availabilityRequestId = 0;
+
+  static const _usernameAvailableMessage = 'Kullanıcı adı uygun';
+  static const _usernameTakenMessage = 'Bu kullanıcı adı zaten kullanılıyor';
+  static const _usernameCheckFailedMessage =
+      'Kullanılabilirlik kontrol edilemedi; yine de deneyebilirsiniz';
+
+  bool get _isUsernameTaken =>
+      _availabilityMessage == _usernameTakenMessage;
+
+  bool get _canContinue =>
+      !_isLoading && !_isCheckingAvailability && !_isUsernameTaken;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && AuthVerification.requiresEmailVerification(user)) {
+        PostAuthNavigation.go(context);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -30,6 +57,8 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
   Future<void> _checkUsernameAvailability(String username) async {
     if (username.length < 3) return;
 
+    final requestId = ++_availabilityRequestId;
+    if (!mounted) return;
     setState(() {
       _isCheckingAvailability = true;
       _availabilityMessage = null;
@@ -40,20 +69,30 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
           .collection('users')
           .where('username', isEqualTo: username.toLowerCase())
           .limit(1)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 10));
 
+      if (!mounted || requestId != _availabilityRequestId) return;
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      final takenByAnotherUser = querySnapshot.docs.any(
+        (doc) => doc.id != currentUid,
+      );
       setState(() {
         _isCheckingAvailability = false;
-        if (querySnapshot.docs.isNotEmpty) {
-          _availabilityMessage = 'Bu kullanıcı adı zaten kullanılıyor';
-        } else {
-          _availabilityMessage = 'Kullanıcı adı uygun ✓';
-        }
+        _availabilityMessage = takenByAnotherUser
+            ? _usernameTakenMessage
+            : _usernameAvailableMessage;
       });
     } catch (e) {
+      _logService.error(
+        'Username availability check failed',
+        tag: 'Auth',
+        error: e,
+      );
+      if (!mounted || requestId != _availabilityRequestId) return;
       setState(() {
         _isCheckingAvailability = false;
-        _availabilityMessage = 'Kontrol edilemiyor';
+        _availabilityMessage = _usernameCheckFailedMessage;
       });
     }
   }
@@ -62,7 +101,17 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Oturum bulunamadı. Lütfen tekrar giriş yapın.',
+          ),
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -74,24 +123,32 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
           .collection('users')
           .where('username', isEqualTo: username)
           .limit(1)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 10));
 
-      if (querySnapshot.docs.isNotEmpty) {
-        setState(() => _isLoading = false);
+      final takenByAnotherUser = querySnapshot.docs.any(
+        (doc) => doc.id != user.uid,
+      );
+      if (takenByAnotherUser) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _availabilityMessage = _usernameTakenMessage;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bu kullanıcı adı zaten kullanılıyor')),
+          const SnackBar(content: Text(_usernameTakenMessage)),
         );
         return;
       }
 
-      // Username'i kaydet
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({
-        'username': username,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      // Username'i kaydet (Apple kayıt sonrası doküman zaten var; merge güvenli)
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+        {
+          'username': username,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
 
       _logService.info('Username set successfully: $username', tag: 'Auth');
 
@@ -100,13 +157,16 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
       }
     } catch (e) {
       _logService.error('Failed to save username', tag: 'Auth', error: e);
+      if (!mounted) return;
       setState(() => _isLoading = false);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: ${e.toString()}')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Kullanıcı adı kaydedilemedi. Lütfen tekrar deneyin.',
+          ),
+        ),
+      );
     }
   }
 
@@ -204,14 +264,12 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                                           )
                                         : _availabilityMessage != null
                                             ? Icon(
-                                                _availabilityMessage!
-                                                        .contains('✓')
-                                                    ? Icons.check_circle
-                                                    : Icons.error,
-                                                color: _availabilityMessage!
-                                                        .contains('✓')
-                                                    ? Colors.green
-                                                    : Colors.red,
+                                                _isUsernameTaken
+                                                    ? Icons.error
+                                                    : Icons.check_circle,
+                                                color: _isUsernameTaken
+                                                    ? Colors.red
+                                                    : Colors.green,
                                               )
                                             : null,
                                   ),
@@ -231,9 +289,12 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                                   Text(
                                     _availabilityMessage!,
                                     style: TextStyle(
-                                      color: _availabilityMessage!.contains('✓')
-                                          ? Colors.green
-                                          : Colors.red,
+                                      color: _isUsernameTaken
+                                          ? Colors.red
+                                          : _availabilityMessage ==
+                                                  _usernameCheckFailedMessage
+                                              ? Colors.orange
+                                              : Colors.green,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -242,13 +303,8 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed: _isLoading ||
-                                            _isCheckingAvailability ||
-                                            (_availabilityMessage != null &&
-                                                !_availabilityMessage!
-                                                    .contains('✓'))
-                                        ? null
-                                        : _saveUsername,
+                                    onPressed:
+                                        _canContinue ? _saveUsername : null,
                                     style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 16),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_icon.dart';
@@ -8,6 +10,8 @@ import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
+import 'package:backgammon_score_tracker/core/auth/auth_verification.dart';
+import 'package:backgammon_score_tracker/core/auth/post_auth_navigation.dart';
 
 class LoginScreen extends StatefulWidget {
   final bool showSignUp;
@@ -33,6 +37,10 @@ class _LoginScreenState extends State<LoginScreen>
   late Animation<Offset> _slideAnimation;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _didAutoNavigate = false;
+  StreamSubscription<User?>? _authSub;
+  bool get _useAppleAuth =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   void initState() {
@@ -65,15 +73,42 @@ class _LoginScreenState extends State<LoginScreen>
     );
 
     _controller.forward();
+
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        _handleAuthenticatedUser(user);
+      }
+    });
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      _handleAuthenticatedUser(currentUser);
+    }
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _controller.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleAuthenticatedUser(User user) async {
+    // Manuel OAuth/e-posta akışı sırasında çift yönlendirmeyi önle.
+    if (!mounted || _didAutoNavigate || _isLoading) return;
+    _didAutoNavigate = true;
+    if (!AuthVerification.requiresEmailVerification(user)) {
+      try {
+        await _sessionService.startSession();
+      } catch (_) {
+        // Oturum başlatılamasa da kullanıcı adı kurulumuna devam et.
+      }
+    }
+    if (!mounted) return;
+    await PostAuthNavigation.go(context, user: user);
   }
 
   Future<void> _handleLogin() async {
@@ -87,11 +122,14 @@ class _LoginScreenState extends State<LoginScreen>
         _passwordController.text,
       );
 
-      // Session'ı başlat
-      await _sessionService.startSession();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null &&
+          !AuthVerification.requiresEmailVerification(user)) {
+        await _sessionService.startSession();
+      }
 
       if (mounted) {
-        Navigator.pushReplacementNamed(context, AppRouter.home);
+        await PostAuthNavigation.go(context, user: user);
       }
     } catch (e) {
       if (mounted) {
@@ -123,30 +161,27 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     setState(() => _isLoading = true);
+    _didAutoNavigate = true;
 
     try {
-      await _firebaseService.signUp(
+      final userCredential = await _firebaseService.signUp(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
-      // Session'ı başlat
-      await _sessionService.startSession();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content:
-                Text('Kayıt başarılı! Lütfen e-posta adresinizi doğrulayın.'),
+            content: Text(
+              'Doğrulama e-postası gönderildi. Bağlantıya tıkladıktan sonra devam edebilirsiniz.',
+            ),
             backgroundColor: Colors.green,
           ),
         );
-        setState(() => _isSignUp = false);
-        _emailController.clear();
-        _passwordController.clear();
-        _confirmPasswordController.clear();
+        await PostAuthNavigation.go(context, user: userCredential.user);
       }
     } catch (e) {
+      _didAutoNavigate = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -225,7 +260,7 @@ class _LoginScreenState extends State<LoginScreen>
       final userCredential = await _firebaseService.signInWithGoogle();
 
       if (userCredential != null) {
-        // Session'ı başlat
+        _didAutoNavigate = true;
         await _sessionService.startSession();
 
         if (mounted) {
@@ -235,10 +270,11 @@ class _LoginScreenState extends State<LoginScreen>
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pushReplacementNamed(context, AppRouter.home);
+          await PostAuthNavigation.go(context, user: userCredential.user);
         }
       }
     } catch (e) {
+      _didAutoNavigate = false;
       if (mounted) {
         final errorMsg = e.toString().replaceAll('Exception: ', '');
         if (errorMsg.contains('kayıt yapılmamış')) {
@@ -286,7 +322,11 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final userCredential = await _firebaseService.signUpWithGoogle();
       if (userCredential != null) {
-        await _sessionService.startSession();
+        try {
+          await _sessionService.startSession();
+        } catch (_) {
+          // Session başlatma başarısız olsa da kullanıcıyı içeride bırakma.
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -294,7 +334,7 @@ class _LoginScreenState extends State<LoginScreen>
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pushReplacementNamed(context, AppRouter.home);
+          await PostAuthNavigation.go(context, user: userCredential.user);
         }
       }
     } catch (e) {
@@ -310,6 +350,74 @@ class _LoginScreenState extends State<LoginScreen>
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _handleAppleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final userCredential = await _firebaseService.signInWithApple();
+      if (userCredential != null) {
+        _didAutoNavigate = true;
+        await _sessionService.startSession();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Apple ile giriş başarılı'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          await PostAuthNavigation.go(context, user: userCredential.user);
+        }
+      }
+    } catch (e) {
+      _didAutoNavigate = false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleAppleSignUp() async {
+    setState(() => _isLoading = true);
+    try {
+      final userCredential = await _firebaseService.signUpWithApple();
+      if (userCredential != null) {
+        _didAutoNavigate = true;
+        try {
+          await _sessionService.startSession();
+        } catch (_) {
+          // Session başlatma başarısız olsa da kullanıcıyı içeride bırakma.
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Apple ile kayıt başarılı'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          await PostAuthNavigation.go(context, user: userCredential.user);
+        }
+      }
+    } catch (e) {
+      _didAutoNavigate = false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -397,19 +505,19 @@ class _LoginScreenState extends State<LoginScreen>
                           colors: [
                             Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
-                                .withOpacity(0.7),
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.7),
                             Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
-                                .withOpacity(0.5),
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.5),
                           ],
                         ),
                         border: Border.all(
                           color: Theme.of(context)
                               .colorScheme
                               .outline
-                              .withOpacity(0.2),
+                              .withValues(alpha: 0.2),
                           width: 1,
                         ),
                       ),
@@ -433,7 +541,7 @@ class _LoginScreenState extends State<LoginScreen>
                                           color: Theme.of(context)
                                               .colorScheme
                                               .primary
-                                              .withOpacity(0.1),
+                                              .withValues(alpha: 0.1),
                                           borderRadius:
                                               BorderRadius.circular(12),
                                         ),
@@ -611,18 +719,22 @@ class _LoginScreenState extends State<LoginScreen>
                                                       .clear();
                                                 });
                                               },
-                                        child: const Text(
-                                            'Hesabın yok mu? Kayıt Ol'),
                                         style: TextButton.styleFrom(
                                           textStyle:
                                               const TextStyle(fontSize: 15),
                                         ),
+                                        child: const Text(
+                                            'Hesabın yok mu? Kayıt Ol'),
                                       ),
                                     ),
                                     Center(
                                       child: TextButton(
                                         onPressed:
                                             _isLoading ? null : _resetPassword,
+                                        style: TextButton.styleFrom(
+                                          textStyle:
+                                              const TextStyle(fontSize: 14),
+                                        ),
                                         child: Text(
                                           'Şifremi Unuttum',
                                           style: TextStyle(
@@ -631,10 +743,6 @@ class _LoginScreenState extends State<LoginScreen>
                                                 .primary,
                                             fontSize: 14,
                                           ),
-                                        ),
-                                        style: TextButton.styleFrom(
-                                          textStyle:
-                                              const TextStyle(fontSize: 14),
                                         ),
                                       ),
                                     ),
@@ -652,12 +760,12 @@ class _LoginScreenState extends State<LoginScreen>
                                                       .clear();
                                                 });
                                               },
-                                        child: const Text(
-                                            'Zaten hesabın var mı? Giriş Yap'),
                                         style: TextButton.styleFrom(
                                           textStyle:
                                               const TextStyle(fontSize: 15),
                                         ),
+                                        child: const Text(
+                                            'Zaten hesabın var mı? Giriş Yap'),
                                       ),
                                     ),
                                   ],
@@ -670,7 +778,7 @@ class _LoginScreenState extends State<LoginScreen>
                                           color: Theme.of(context)
                                               .colorScheme
                                               .outline
-                                              .withOpacity(0.3),
+                                              .withValues(alpha: 0.3),
                                         ),
                                       ),
                                       Padding(
@@ -690,34 +798,28 @@ class _LoginScreenState extends State<LoginScreen>
                                           color: Theme.of(context)
                                               .colorScheme
                                               .outline
-                                              .withOpacity(0.3),
+                                              .withValues(alpha: 0.3),
                                         ),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 16),
-                                  // Google Sign-In Button
+                                  // Platform-specific social sign-in button
                                   if (_isSignUp)
                                     SizedBox(
                                       width: double.infinity,
                                       child: OutlinedButton.icon(
                                         onPressed: _isLoading
                                             ? null
-                                            : _handleGoogleSignUp,
-                                        icon: Container(
-                                          width: 20,
-                                          height: 20,
-                                          decoration: const BoxDecoration(
-                                            image: DecorationImage(
-                                              image: NetworkImage(
-                                                'https://developers.google.com/identity/images/g-logo.png',
-                                              ),
-                                              fit: BoxFit.contain,
-                                            ),
-                                          ),
-                                        ),
-                                        label:
-                                            const Text('Google ile Kayıt Ol'),
+                                            : (_useAppleAuth
+                                                ? _handleAppleSignUp
+                                                : _handleGoogleSignUp),
+                                        icon: Icon(_useAppleAuth
+                                            ? Icons.apple
+                                            : Icons.g_mobiledata),
+                                        label: Text(_useAppleAuth
+                                            ? 'Apple ile Kayıt Ol'
+                                            : 'Google ile Kayıt Ol'),
                                         style: OutlinedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
                                               vertical: 16),
@@ -725,7 +827,7 @@ class _LoginScreenState extends State<LoginScreen>
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .outline
-                                                .withOpacity(0.5),
+                                                .withValues(alpha: 0.5),
                                           ),
                                         ),
                                       ),
@@ -736,21 +838,15 @@ class _LoginScreenState extends State<LoginScreen>
                                       child: OutlinedButton.icon(
                                         onPressed: _isLoading
                                             ? null
-                                            : _handleGoogleSignIn,
-                                        icon: Container(
-                                          width: 20,
-                                          height: 20,
-                                          decoration: const BoxDecoration(
-                                            image: DecorationImage(
-                                              image: NetworkImage(
-                                                'https://developers.google.com/identity/images/g-logo.png',
-                                              ),
-                                              fit: BoxFit.contain,
-                                            ),
-                                          ),
-                                        ),
-                                        label:
-                                            const Text('Google ile Giriş Yap'),
+                                            : (_useAppleAuth
+                                                ? _handleAppleSignIn
+                                                : _handleGoogleSignIn),
+                                        icon: Icon(_useAppleAuth
+                                            ? Icons.apple
+                                            : Icons.g_mobiledata),
+                                        label: Text(_useAppleAuth
+                                            ? 'Apple ile Giriş Yap'
+                                            : 'Google ile Giriş Yap'),
                                         style: OutlinedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
                                               vertical: 16),
@@ -758,7 +854,7 @@ class _LoginScreenState extends State<LoginScreen>
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .outline
-                                                .withOpacity(0.5),
+                                                .withValues(alpha: 0.5),
                                           ),
                                         ),
                                       ),

@@ -1,11 +1,14 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
-import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_container.dart';
 import 'package:backgammon_score_tracker/core/services/payment_service.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 class PremiumUpgradeScreen extends StatefulWidget {
   final String? source; // Hangi sayfadan geldiği bilgisi
@@ -20,91 +23,158 @@ class PremiumUpgradeScreen extends StatefulWidget {
 }
 
 class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
-  final PremiumService _premiumService = PremiumService();
   final PaymentService _paymentService = PaymentService();
-  bool _isLoading = false;
+  final PremiumService _premiumService = PremiumService();
   String? _errorMessage;
+  bool _loadingProducts = true;
+  bool _checkingMembership = true;
+  bool _hasPremium = false;
+  PremiumMembershipInfo? _membershipInfo;
+  bool _awaitingPurchaseConfirmation = false;
+  bool _activationHandled = false;
+  StreamSubscription<bool>? _premiumActivatedSub;
 
   @override
   void initState() {
     super.initState();
-    _initializePaymentService();
+    _initScreen();
+    _premiumActivatedSub =
+        _premiumService.premiumActivatedStream.listen((active) async {
+      if (!active || !mounted) return;
+      await _refreshMembershipStatus();
+      if (_awaitingPurchaseConfirmation) {
+        _onPremiumActivated();
+      }
+    });
   }
 
-  Future<void> _initializePaymentService() async {
+  Future<void> _initScreen() async {
+    await _refreshMembershipStatus();
+    if (!mounted) return;
+    if (!_hasPremium) {
+      await _loadProducts();
+    } else {
+      setState(() => _loadingProducts = false);
+    }
+  }
+
+  Future<void> _refreshMembershipStatus() async {
+    if (mounted) {
+      setState(() => _checkingMembership = true);
+    }
+    final info = await _premiumService.fetchMembershipDetails();
+    final active =
+        info != null && info.isPremium && !info.isExpired;
+    if (mounted) {
+      setState(() {
+        _membershipInfo = info;
+        _hasPremium = active;
+        _checkingMembership = false;
+      });
+    }
+  }
+
+  String? _formatExpiry(DateTime? date) {
+    if (date == null) return null;
+    return DateFormat('dd.MM.yyyy').format(date);
+  }
+
+  @override
+  void dispose() {
+    _premiumActivatedSub?.cancel();
+    super.dispose();
+  }
+
+  void _onPremiumActivated() {
+    if (!mounted || _activationHandled) return;
+    _activationHandled = true;
+    setState(() => _awaitingPurchaseConfirmation = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Premium üyeliğiniz aktifleştirildi.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+    Navigator.pop(context, true);
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _loadingProducts = true;
+      _errorMessage = null;
+    });
+
     try {
-      await _paymentService.initialize();
-
-      // Ürünlerin yüklenmesini bekle
-      await Future.delayed(const Duration(seconds: 3));
-
-      // Eğer hala ürün yoksa test ürünlerini zorla ekle
-      if (_paymentService.products.isEmpty) {
-        debugPrint('Ürünler yüklenmedi, test ürünleri zorla ekleniyor...');
-        _paymentService.addTestProducts();
-      }
-
-      // Her durumda setState çağır
-      if (mounted) {
-        setState(() {});
-      }
+      await _paymentService.reloadProducts();
     } catch (e) {
-      debugPrint('Payment service initialization error: $e');
-      // Hata durumunda da test ürünleri ekle
-      _paymentService.addTestProducts();
+      debugPrint('Premium ürün yükleme hatası: $e');
+    }
 
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Ödeme sistemi başlatılamadı: $e';
-        });
-      }
+    if (mounted) {
+      setState(() => _loadingProducts = false);
     }
   }
 
   Future<void> _purchaseProduct(String productId) async {
     setState(() {
-      _isLoading = true;
       _errorMessage = null;
     });
 
-    try {
-      // Önce Play Store durumunu kontrol et
-      final status = await _paymentService.checkPlayStoreStatus();
+    if (FirebaseAuth.instance.currentUser == null) {
+      setState(() {
+        _errorMessage =
+            'Premium satın almak için önce giriş yapmanız gerekiyor.';
+      });
+      return;
+    }
 
-      if (!status['available']) {
-        setState(() {
-          _errorMessage = '${status['reason']}\n\nÇözüm: ${status['solution']}';
-        });
-        return;
+    try {
+      if (!kDebugMode || !_paymentService.hasProducts) {
+        final status = await _paymentService.checkStoreStatus();
+
+        if (!status['available']) {
+          debugPrint(
+              'Store not available: ${status['debugReason'] ?? status['reason']}');
+          setState(() {
+            _errorMessage = PaymentService.friendlyPurchaseError;
+          });
+          return;
+        }
       }
+
+      setState(() => _awaitingPurchaseConfirmation = true);
 
       final success = await _paymentService.purchaseProduct(productId);
 
       if (success) {
-        if (mounted) {
+        // Debug/test: premium hemen yazılır; release: StoreKit stream tamamlanınca kapanır.
+        if (kDebugMode) {
+          await _premiumService.refreshPremiumStatus();
+          if (mounted) _onPremiumActivated();
+        } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Satın alma başlatıldı!'),
-              backgroundColor: Colors.green,
+              content: Text(
+                'Satın alma işleniyor… Onaylandığında premium açılacak.',
+              ),
+              duration: Duration(seconds: 4),
             ),
           );
         }
       } else {
+        if (mounted) {
+          setState(() => _awaitingPurchaseConfirmation = false);
+        }
         setState(() {
-          _errorMessage = 'Satın alma başlatılamadı. Lütfen:\n'
-              '• Uygulamanın Play Store\'dan indirildiğini kontrol edin\n'
-              '• Test kullanıcısı olduğunuzdan emin olun\n'
-              '• İnternet bağlantınızı kontrol edin';
+          _errorMessage = PaymentService.friendlyPurchaseError;
         });
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Satın alma hatası: $e';
-      });
-    } finally {
+      debugPrint('Purchase exception: $e');
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _errorMessage = PaymentService.friendlyPurchaseError;
+          _awaitingPurchaseConfirmation = false;
         });
       }
     }
@@ -114,11 +184,13 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Premium Özellikler'),
+        title: Text(_hasPremium ? 'Premium Üyeliğim' : 'Premium Özellikler'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: BackgroundBoard(
+      body: Stack(
+        children: [
+          BackgroundBoard(
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -144,7 +216,9 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Premium\'a Yükselt',
+                          _hasPremium
+                              ? 'Premium Aktif'
+                              : 'Premium\'a Yükselt',
                           style: Theme.of(context)
                               .textTheme
                               .headlineSmall
@@ -155,7 +229,9 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Arkadaş ekleme ve sosyal turnuva özelliklerinin kilidini açın',
+                          _hasPremium
+                              ? 'Tüm premium özellikler hesabınızda açık.'
+                              : 'Arkadaş ekleme ve sosyal turnuva özelliklerinin kilidini açın',
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
@@ -223,6 +299,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                     ),
                   ),
                 ),
+                if (!_hasPremium) ...[
                 const SizedBox(height: 16),
 
                 // Ücretsiz limitler
@@ -268,117 +345,33 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                ],
 
-                // Premium satın alma butonları
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        'Premium Planları',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                if (_checkingMembership)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_hasPremium)
+                  _buildActiveMembershipSection()
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          'Premium Planları',
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    StreamBuilder<List<ProductDetails>>(
-                      stream: _paymentService.productsStream,
-                      builder: (context, snapshot) {
-                        // Başlangıç durumunda veya bağlantı beklerken loading göster
-                        if (snapshot.connectionState ==
-                                ConnectionState.waiting ||
-                            snapshot.connectionState == ConnectionState.none) {
-                          return Container(
-                            padding: const EdgeInsets.all(20),
-                            child: const Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(),
-                                  SizedBox(height: 16),
-                                  Text('Premium planları yükleniyor...'),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-
-                        final products = snapshot.data ?? [];
-
-                        // Ürün yoksa test ürünlerini göster (hem debug hem release için)
-                        if (products.isEmpty) {
-                          return Column(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color:
-                                          Colors.orange.withValues(alpha: 0.3)),
-                                ),
-                                child: const Text(
-                                  'Play Store ürünleri yüklenemedi - Test ürünleri gösteriliyor',
-                                  style: TextStyle(color: Colors.orange),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildPlanCard(
-                                'Aylık Premium (Test)',
-                                '₺19.99/ay',
-                                '1 ay premium erişim',
-                                Icons.calendar_month,
-                                Colors.blue,
-                                () => _purchaseProduct('premium_monthly'),
-                              ),
-                              const SizedBox(height: 12),
-                              // _buildPlanCard(
-                              //   'Yıllık Premium (Test)',
-                              //   '₺149.99/yıl',
-                              //   '12 ay premium erişim (2 ay bedava)',
-                              //   Icons.calendar_today,
-                              //   Colors.green,
-                              //   () => _purchaseProduct('premium_yearly'),
-                              //   isRecommended: true,
-                              // ),
-                            ],
-                          );
-                        }
-
-                        return Column(
-                          children: [
-                            if (_paymentService.getMonthlyPremium() != null)
-                              _buildPlanCard(
-                                _paymentService.getMonthlyPremium()!.title,
-                                _paymentService.getMonthlyPremium()!.price,
-                                '1 ay premium erişim',
-                                Icons.calendar_month,
-                                Colors.blue,
-                                () => _purchaseProduct('premium_monthly'),
-                              ),
-                            if (_paymentService.getMonthlyPremium() != null &&
-                                _paymentService.getYearlyPremium() != null)
-                              const SizedBox(height: 12),
-                            // if (_paymentService.getYearlyPremium() != null)
-                            //   _buildPlanCard(
-                            //     _paymentService.getYearlyPremium()!.title,
-                            //     _paymentService.getYearlyPremium()!.price,
-                            //     '12 ay premium erişim (2 ay bedava)',
-                            //     Icons.calendar_today,
-                            //     Colors.green,
-                            //     () => _purchaseProduct('premium_yearly'),
-                            //     isRecommended: true,
-                            //   ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 16),
+                      _buildPlansSection(),
+                    ],
+                  ),
                 const SizedBox(height: 16),
 
                 // Hata mesajı
@@ -419,6 +412,204 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
           ),
         ),
       ),
+          if (_awaitingPurchaseConfirmation)
+            Container(
+              color: Colors.black45,
+              child: const Center(
+                child: Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Satın alma onaylanıyor…'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveMembershipSection() {
+    final expiry = _formatExpiry(_membershipInfo?.expiryDate);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StyledCard(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.verified, color: Colors.green[700], size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Üyeliğiniz aktif',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (expiry != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Geçerlilik: $expiry',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                _buildFeatureItem(
+                  Icons.people,
+                  'Sınırsız arkadaş ekleme',
+                  'Hesabınızda aktif',
+                  Colors.green,
+                ),
+                const SizedBox(height: 12),
+                _buildFeatureItem(
+                  Icons.emoji_events,
+                  'Sosyal turnuva oluşturma',
+                  'Hesabınızda aktif',
+                  Colors.green,
+                ),
+                const SizedBox(height: 12),
+                _buildFeatureItem(
+                  Icons.block,
+                  'Reklamsız deneyim',
+                  'Hesabınızda aktif',
+                  Colors.green,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              await _paymentService.restorePurchases();
+              await _premiumService.refreshPremiumStatus();
+              await _refreshMembershipStatus();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Satın alımlar kontrol edildi.'),
+                ),
+              );
+            },
+            icon: const Icon(Icons.restore),
+            label: const Text('Satın Alımları Geri Yükle'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlansSection() {
+    if (_hasPremium) {
+      return const SizedBox.shrink();
+    }
+
+    if (_loadingProducts) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Premium planları yükleniyor...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final monthly = _paymentService.getMonthlyPremium();
+    if (monthly != null) {
+      return Column(
+        children: [
+          _buildPlanCard(
+            monthly.title,
+            monthly.price,
+            monthly.description,
+            Icons.calendar_month,
+            Colors.blue,
+            () => _purchaseProduct('premium_monthly'),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.orange.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+          ),
+          child: Text(
+            _paymentService.userProductsLoadMessage,
+            style: const TextStyle(color: Colors.orange),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (kDebugMode)
+          _buildPlanCard(
+            'Aylık Premium (Test)',
+            '₺29.99/ay',
+            '1 ay premium erişim',
+            Icons.calendar_month,
+            Colors.blue,
+            () => _purchaseProduct('premium_monthly'),
+          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _loadProducts,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Yeniden Dene'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await _paymentService.restorePurchases();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Satın alımlar geri yükleniyor...'),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.restore),
+                label: const Text('Geri Yükle'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -619,21 +810,4 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
     );
   }
 
-  void _showComingSoonDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Yakında'),
-        content: const Text(
-          'Premium özellikler yakında aktif olacak. Şimdilik admin tarafından premium durumunuz güncellenebilir.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Tamam'),
-          ),
-        ],
-      ),
-    );
-  }
 }

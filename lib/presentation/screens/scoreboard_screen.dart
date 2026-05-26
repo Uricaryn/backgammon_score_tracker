@@ -68,6 +68,7 @@ class _ScoreboardScreenState extends State<ScoreboardScreen> {
     try {
       // Ekran görüntüsü al
       final image = await _screenshotController.capture();
+      if (!mounted) return;
       if (image != null) {
         // Geçici dosya oluştur
         final tempDir = await getTemporaryDirectory();
@@ -75,9 +76,11 @@ class _ScoreboardScreenState extends State<ScoreboardScreen> {
         await file.writeAsBytes(image);
 
         // Paylaş
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Tavla Skor Tablosu',
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(file.path)],
+            text: 'Tavla Skor Tablosu',
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -85,6 +88,7 @@ class _ScoreboardScreenState extends State<ScoreboardScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Paylaşım hatası: $e')),
       );

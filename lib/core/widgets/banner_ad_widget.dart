@@ -38,19 +38,25 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     }
   }
 
-  void _loadBannerAd() {
+  void _loadBannerAd() async {
     final adService = AdService();
-    _bannerAd = adService.createBannerAd();
+    final bannerAd = await adService.createBannerAd();
+    if (!mounted) {
+      bannerAd.dispose();
+      return;
+    }
+
+    _bannerAd = bannerAd;
 
     _bannerAd?.load().then((_) {
       if (mounted) {
         setState(() {
           _isLoaded = true;
         });
-        print('✅ Banner ad widget başarıyla yüklendi');
+        debugPrint('✅ Banner ad widget başarıyla yüklendi');
       }
     }).catchError((error) {
-      print('❌ Banner ad widget yükleme hatası: $error');
+      debugPrint('❌ Banner ad widget yükleme hatası: $error');
       if (mounted) {
         setState(() {
           _isLoaded = false;
@@ -81,7 +87,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewPadding.bottom + 8,
         ),
-        child: Container(
+        child: SizedBox(
           width: _bannerAd!.size.width.toDouble(),
           height: _bannerAd!.size.height.toDouble(),
           child: AdWidget(ad: _bannerAd!),

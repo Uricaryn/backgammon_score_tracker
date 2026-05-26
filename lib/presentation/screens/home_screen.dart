@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'dart:async';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
@@ -7,21 +6,27 @@ import 'package:backgammon_score_tracker/presentation/screens/new_game_screen.da
 import 'package:backgammon_score_tracker/presentation/screens/players_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/notifications_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/profile_screen.dart';
-import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
+import 'package:backgammon_score_tracker/core/auth/auth_verification.dart';
+import 'package:backgammon_score_tracker/core/auth/post_auth_navigation.dart';
 import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/daily_tip_service.dart';
-import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/core/services/ad_service.dart';
+import 'package:backgammon_score_tracker/core/services/tutorial_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/banner_ad_widget.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/home_tutorial_overlay.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/tutorial_anchor.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.startTutorial = false});
+
+  /// Profilden turu tekrar başlatmak için.
+  final bool startTutorial;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -44,14 +49,42 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isLoadingTip = false;
   bool _showTipPulse = false;
 
+  final _welcomeKey = GlobalKey();
+  final _onlineTavlaKey = GlobalKey();
+  final _quickTournamentKey = GlobalKey();
+  final _tournamentsKey = GlobalKey();
+  final _socialKey = GlobalKey();
+  final _fabKey = GlobalKey();
+
+  bool _socialExpanded = false;
+  bool _pendingUpdatesAfterTutorial = false;
+  int? _tutorialStepIndex;
+  OverlayEntry? _tutorialOverlayEntry;
+  Future<bool>? _premiumAccessFuture;
+  StreamSubscription<bool>? _premiumActivatedSub;
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    _premiumAccessFuture = _premiumService.hasPremiumAccess();
+    _premiumActivatedSub =
+        _premiumService.premiumActivatedStream.listen((active) {
+      if (active && mounted) {
+        setState(() {
+          _premiumAccessFuture = _premiumService.hasPremiumAccess();
+        });
+      }
+    });
     _initializeScreen();
-    _showInterstitialAd();
+  }
+
+  void _refreshPremiumAccessFuture() {
+    setState(() {
+      _premiumAccessFuture = _premiumService.hasPremiumAccess();
+    });
   }
 
   // Geçiş reklamını göster
@@ -69,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen>
         interstitialAd.dispose();
       }
     } catch (e) {
-      print('Geçiş reklamı gösterilemedi: $e');
+      debugPrint('Geçiş reklamı gösterilemedi: $e');
     }
   }
 
@@ -93,10 +126,10 @@ class _HomeScreenState extends State<HomeScreen>
 
       // ✅ Post-frame callbacks for UI-dependent operations
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _checkGuestDataMigrationOptimized();
-          _checkForPendingUpdates();
-        }
+        if (!mounted) return;
+        _checkGuestDataMigrationOptimized();
+        _scheduleTutorialOrUpdates();
+        _showInterstitialAd();
       });
     } catch (e) {
       debugPrint('Screen initialization error: $e');
@@ -184,6 +217,13 @@ class _HomeScreenState extends State<HomeScreen>
           setState(() {
             _username = isGuest ? 'Misafir' : 'Kullanıcı';
           });
+        }
+        return;
+      }
+
+      if (AuthVerification.requiresEmailVerification(user)) {
+        if (mounted) {
+          await PostAuthNavigation.go(context, user: user);
         }
         return;
       }
@@ -282,6 +322,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _premiumActivatedSub?.cancel();
+    _removeTutorialOverlay();
     _mainScrollController.dispose();
     super.dispose();
   }
@@ -293,26 +335,220 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() => _isLoading = true);
 
       await FirebaseAuth.instance.signOut();
-
-      if (context.mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          AppRouter.login,
-          (Route<dynamic> route) => false,
-        );
-      }
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRouter.login,
+        (Route<dynamic> route) => false,
+      );
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Çıkış yapılırken hata oluştu: ${e.toString()}'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Çıkış yapılırken hata oluştu: ${e.toString()}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  List<_HomeTutorialStep> _buildTutorialSteps() {
+    final steps = <_HomeTutorialStep>[
+      _HomeTutorialStep(
+        targetKey: _welcomeKey,
+        title: 'Hoş geldin',
+        description:
+            'Tavla Skor Takip ile maçlarını kaydet, skor tablosu oluştur ve arkadaşlarınla turnuvalar düzenle.',
+      ),
+      _HomeTutorialStep(
+        targetKey: _onlineTavlaKey,
+        title: 'Online Tavla',
+        description:
+            'Arkadaşınla canlı tavla oyna: oda oluştur, davet gönder veya oda koduyla katıl.',
+        scrollAlignment: 0.12,
+      ),
+      _HomeTutorialStep(
+        targetKey: _quickTournamentKey,
+        title: 'Hızlı Turnuva',
+        description:
+            'Yeni maç başlat, oyuncuları yönet, skorboard ve maç geçmişine buradan ulaş.',
+        scrollAlignment: 0.18,
+      ),
+    ];
+    if (!_isGuestUser) {
+      steps.add(
+        _HomeTutorialStep(
+          targetKey: _tournamentsKey,
+          title: 'Turnuvalar',
+          description:
+              'Turnuva oluştur, katıl ve eşleşmeleri yönet. Online turnuvalarda canlı tavla odası açılır.',
+          preferTooltipAbove: true,
+          scrollAlignment: 0.42,
+        ),
+      );
+    }
+    steps.addAll([
+      _HomeTutorialStep(
+        targetKey: _socialKey,
+        title: 'Hesap ve Sosyal',
+        description: _isGuestUser
+            ? 'Profilini yönet. Kayıt olduktan sonra arkadaş ekleyip davet gönderebilirsin.'
+            : 'Arkadaşlarını ekle, profilini düzenle ve bildirimlerden davetleri takip et.',
+        preferTooltipAbove: true,
+        scrollAlignment: 0.48,
+      ),
+      _HomeTutorialStep(
+        targetKey: _fabKey,
+        title: 'Günün ipucu',
+        description:
+            'Ampul düğmesine basarak her gün yeni bir tavla bilgisi veya strateji ipucu okuyabilirsin.',
+        preferTooltipAbove: true,
+        scrollToEndFirst: true,
+        scrollAlignment: 0.85,
+      ),
+    ]);
+    return steps;
+  }
+
+  Widget _tutorialTarget(
+    GlobalKey targetKey,
+    Widget child, {
+    bool fullWidth = true,
+  }) {
+    return TutorialAnchor(
+      anchorKey: targetKey,
+      fullWidth: fullWidth,
+      child: child,
+    );
+  }
+
+  void _removeTutorialOverlay() {
+    _tutorialOverlayEntry?.remove();
+    _tutorialOverlayEntry = null;
+  }
+
+  void _syncTutorialOverlay() {
+    final steps = _buildTutorialSteps();
+    final index = _tutorialStepIndex;
+    if (index == null || index >= steps.length) {
+      _removeTutorialOverlay();
+      return;
+    }
+
+    _tutorialOverlayEntry ??= OverlayEntry(
+      builder: (overlayContext) {
+        final currentSteps = _buildTutorialSteps();
+        final currentIndex = _tutorialStepIndex;
+        if (currentIndex == null || currentIndex >= currentSteps.length) {
+          return const SizedBox.shrink();
+        }
+        final currentStep = currentSteps[currentIndex];
+        return HomeTutorialOverlay(
+          key: ValueKey('tutorial_$currentIndex'),
+          targetKey: currentStep.targetKey,
+          title: currentStep.title,
+          description: currentStep.description,
+          stepIndex: currentIndex,
+          totalSteps: currentSteps.length,
+          scrollController: _mainScrollController,
+          preferTooltipAbove: currentStep.preferTooltipAbove,
+          scrollToEndFirst: currentStep.scrollToEndFirst,
+          scrollAlignment: currentStep.scrollAlignment,
+          onNext: _tutorialNext,
+          onPrevious: _tutorialPrevious,
+          onSkip: _tutorialSkip,
+        );
+      },
+    );
+
+    if (_tutorialOverlayEntry!.mounted) {
+      _tutorialOverlayEntry!.markNeedsBuild();
+    } else {
+      Overlay.of(context).insert(_tutorialOverlayEntry!);
+    }
+  }
+
+  Future<void> _scheduleTutorialOrUpdates() async {
+    final force = widget.startTutorial;
+    final shouldShow = force || await TutorialService.instance.shouldShow();
+    if (shouldShow && mounted) {
+      await _maybeStartTutorial(force: force);
+    } else if (mounted) {
+      await _checkForPendingUpdates();
+    }
+  }
+
+  Future<void> _maybeStartTutorial({bool force = false}) async {
+    if (!force && !await TutorialService.instance.shouldShow()) {
+      await _checkForPendingUpdates();
+      return;
+    }
+    if (!mounted) return;
+    _pendingUpdatesAfterTutorial = true;
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() => _tutorialStepIndex = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncTutorialOverlay();
+    });
+  }
+
+  void _tutorialNext() {
+    final steps = _buildTutorialSteps();
+    final current = _tutorialStepIndex;
+    if (current == null) return;
+    if (current >= steps.length - 1) {
+      _removeTutorialOverlay();
+      setState(() => _tutorialStepIndex = null);
+      _finishTutorial();
+      return;
+    }
+    final nextIndex = current + 1;
+    final nextKey = steps[nextIndex].targetKey;
+    if (nextKey == _socialKey && !_socialExpanded) {
+      setState(() {
+        _socialExpanded = true;
+        _tutorialStepIndex = nextIndex;
+      });
+    } else {
+      setState(() => _tutorialStepIndex = nextIndex);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncTutorialOverlay();
+    });
+  }
+
+  void _tutorialPrevious() {
+    if (_tutorialStepIndex == null || _tutorialStepIndex! <= 0) return;
+    final prevIndex = _tutorialStepIndex! - 1;
+    final prevKey = _buildTutorialSteps()[prevIndex].targetKey;
+    if (prevKey == _socialKey && !_socialExpanded) {
+      setState(() {
+        _socialExpanded = true;
+        _tutorialStepIndex = prevIndex;
+      });
+    } else {
+      setState(() => _tutorialStepIndex = prevIndex);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncTutorialOverlay();
+    });
+  }
+
+  void _tutorialSkip() {
+    _removeTutorialOverlay();
+    setState(() => _tutorialStepIndex = null);
+    _finishTutorial();
+  }
+
+  Future<void> _finishTutorial() async {
+    await TutorialService.instance.markCompleted();
+    if (_pendingUpdatesAfterTutorial && mounted) {
+      _pendingUpdatesAfterTutorial = false;
+      await _checkForPendingUpdates();
     }
   }
 
@@ -325,6 +561,10 @@ class _HomeScreenState extends State<HomeScreen>
       return const Center(child: CircularProgressIndicator());
     }
 
+    return _buildHomeScaffold(context, userId);
+  }
+
+  Widget _buildHomeScaffold(BuildContext context, String userId) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tavla Skor Takip'),
@@ -400,24 +640,28 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
-      floatingActionButton: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        child: FloatingActionButton(
-          onPressed: _showDailyTipBottomSheet,
-          backgroundColor:
-              _showTipPulse ? Colors.amber[500] : Colors.amber[600],
-          foregroundColor: Colors.white,
-          elevation: _showTipPulse ? 12 : 8,
-          child: AnimatedRotation(
-            duration: const Duration(milliseconds: 500),
-            turns: _isLoadingTip ? 0.5 : 0,
-            child: AnimatedScale(
-              duration: const Duration(milliseconds: 200),
-              scale: _isLoadingTip ? 0.9 : (_showTipPulse ? 1.1 : 1.0),
-              child: Icon(
-                _isLoadingTip ? Icons.hourglass_empty : Icons.lightbulb,
-                size: 24,
+      floatingActionButton: _tutorialTarget(
+        _fabKey,
+        fullWidth: false,
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          child: FloatingActionButton(
+            onPressed: _showDailyTipBottomSheet,
+            backgroundColor:
+                _showTipPulse ? Colors.amber[500] : Colors.amber[600],
+            foregroundColor: Colors.white,
+            elevation: _showTipPulse ? 12 : 8,
+            child: AnimatedRotation(
+              duration: const Duration(milliseconds: 500),
+              turns: _isLoadingTip ? 0.5 : 0,
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 200),
+                scale: _isLoadingTip ? 0.9 : (_showTipPulse ? 1.1 : 1.0),
+                child: Icon(
+                  _isLoadingTip ? Icons.hourglass_empty : Icons.lightbulb,
+                  size: 24,
+                ),
               ),
             ),
           ),
@@ -439,22 +683,36 @@ class _HomeScreenState extends State<HomeScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Hoş geldin kartı
-                        _buildWelcomeCard(_username),
+                        _tutorialTarget(
+                          _welcomeKey,
+                          _buildWelcomeCard(_username),
+                        ),
                         const SizedBox(height: 24),
 
-                        // Kişisel oyunlar bölümü
-                        _buildMainFeaturesSection(),
+                        _tutorialTarget(
+                          _onlineTavlaKey,
+                          _buildOnlineTavlaSection(),
+                        ),
                         const SizedBox(height: 24),
 
-                        // Sosyal özellikler bölümü (sadece kayıtlı kullanıcılar için)
+                        _tutorialTarget(
+                          _quickTournamentKey,
+                          _buildMainFeaturesSection(),
+                        ),
+                        const SizedBox(height: 24),
+
                         if (!_isGuestUser) ...[
-                          _buildTournamentsSection(),
+                          _tutorialTarget(
+                            _tournamentsKey,
+                            _buildTournamentsSection(),
+                          ),
                           const SizedBox(height: 24),
                         ],
 
-                        // Diğer özellikler
-                        _buildOtherFeaturesSection(),
+                        _tutorialTarget(
+                          _socialKey,
+                          _buildOtherFeaturesSection(),
+                        ),
 
                         // Premium section
                         if (!_isGuestUser) ...[
@@ -561,6 +819,116 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _openOnlineTavlaLobby() {
+    Navigator.pushNamed(context, AppRouter.gameLobby);
+  }
+
+  /// Canlı tavla lobisi — diğer ana kartlarla aynı görsel dil.
+  Widget _buildOnlineTavlaSection() {
+    final cs = Theme.of(context).colorScheme;
+    const accent = Color(0xFF00796B);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _openOnlineTavlaLobby,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.sports_esports_rounded,
+                    color: accent,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Online Tavla',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: accent,
+                                    fontSize: 18,
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.45),
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Yeni',
+                              style: TextStyle(
+                                color: accent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Oda aç, davet et veya kodla katıl',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 13,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                  size: 28,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // Ana özellikler kartı
   Widget _buildMainFeaturesSection() {
     return Column(
@@ -568,17 +936,7 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.surfaceVariant,
-                Theme.of(context)
-                    .colorScheme
-                    .surfaceVariant
-                    .withValues(alpha: 0.8),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
@@ -881,17 +1239,7 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.surfaceVariant,
-                Theme.of(context)
-                    .colorScheme
-                    .surfaceVariant
-                    .withValues(alpha: 0.8),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
@@ -949,164 +1297,10 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // Premium bölümü
-  Widget _buildPremiumSection() {
-    return FutureBuilder<bool>(
-      future: _premiumService.hasPremiumAccess(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
-        }
-
-        final hasPremium = snapshot.data ?? false;
-
-        if (hasPremium) {
-          return const SizedBox.shrink(); // Premium kullanıcılar için gösterme
-        }
-
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.amber[700]!.withValues(alpha: 0.1),
-                Colors.amber[500]!.withValues(alpha: 0.05),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.amber[700]!.withValues(alpha: 0.3),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.amber[700]!.withValues(alpha: 0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.amber[700]!.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.star,
-                        color: Colors.amber[700],
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Premium\'a Yükselt',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.amber[700],
-                                  fontSize: 18,
-                                ),
-                          ),
-                          Text(
-                            'Daha fazla özellik için Premium\'a geçin',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color:
-                                      Colors.amber[700]!.withValues(alpha: 0.8),
-                                  fontSize: 13,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Premium özellikler:',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.amber[700],
-                      ),
-                ),
-                const SizedBox(height: 8),
-                _buildPremiumFeatureItem('Sınırsız arkadaş ekleme'),
-                _buildPremiumFeatureItem('Sosyal turnuva oluşturma'),
-                _buildPremiumFeatureItem('Öncelikli destek'),
-                _buildPremiumFeatureItem('Reklamsız deneyim'),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              PremiumUpgradeScreen(source: 'home'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.star, size: 18),
-                    label: const Text('Premium\'a Yükselt'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.amber[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPremiumFeatureItem(String feature) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle,
-            color: Colors.green[600],
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            feature,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.amber[700]!.withValues(alpha: 0.8),
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Kompakt premium bölümü
   Widget _buildCompactPremiumSection() {
     return FutureBuilder<bool>(
-      future: _premiumService.hasPremiumAccess(),
+      future: _premiumAccessFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox.shrink();
@@ -1117,35 +1311,56 @@ class _HomeScreenState extends State<HomeScreen>
         if (hasPremium) {
           return const SizedBox.shrink(); // Premium kullanıcılar için gösterme
         }
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final titleColor =
+            isDark ? Colors.amber[700]! : const Color(0xFF7A4A00);
+        final subtitleColor =
+            isDark ? Colors.amber[700]!.withValues(alpha: 0.7) : const Color(0xFF8B5E1A);
 
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.amber[700]!.withValues(alpha: 0.05),
-                Colors.amber[500]!.withValues(alpha: 0.02),
+                isDark
+                    ? Colors.amber[700]!.withValues(alpha: 0.05)
+                    : const Color(0xFFFFF1C7),
+                isDark
+                    ? Colors.amber[500]!.withValues(alpha: 0.02)
+                    : const Color(0xFFFFE5A3),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.amber[700]!.withValues(alpha: 0.2),
-              width: 1,
+              color: isDark
+                  ? Colors.amber[700]!.withValues(alpha: 0.2)
+                  : const Color(0xFFE2B44A),
+              width: isDark ? 1 : 1.3,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.0 : 0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.amber[700]!.withValues(alpha: 0.1),
+                  color: isDark
+                      ? Colors.amber[700]!.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.star,
-                  color: Colors.amber[700],
+                  color: titleColor,
                   size: 20,
                 ),
               ),
@@ -1158,27 +1373,30 @@ class _HomeScreenState extends State<HomeScreen>
                       'Premium\'a Yükselt',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.amber[700],
+                            color: titleColor,
                           ),
                     ),
                     Text(
                       'Sınırsız arkadaş + Sosyal turnuvalar',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.amber[700]!.withValues(alpha: 0.7),
+                            color: subtitleColor,
                           ),
                     ),
                   ],
                 ),
               ),
               FilledButton(
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  final activated = await Navigator.push<bool>(
                     context,
                     MaterialPageRoute(
                       builder: (context) =>
                           PremiumUpgradeScreen(source: 'home'),
                     ),
                   );
+                  if (activated == true && mounted) {
+                    _refreshPremiumAccessFuture();
+                  }
                 },
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.amber[700],
@@ -1201,18 +1419,26 @@ class _HomeScreenState extends State<HomeScreen>
 
   // Diğer özellikler kartı - ExpansionTile ile
   Widget _buildOtherFeaturesSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        Container(
+    return FutureBuilder<bool>(
+      future: _premiumAccessFuture,
+      builder: (context, snapshot) {
+        final hasPremium = snapshot.data ?? false;
+        final friendsSubtitle = hasPremium
+            ? 'Arkadaş ekle ve takip et'
+            : 'Arkadaş ekle ve takip et (3 arkadaş limiti)';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Theme.of(context).colorScheme.surfaceVariant,
+                Theme.of(context).colorScheme.surfaceContainerHighest,
                 Theme.of(context)
                     .colorScheme
-                    .surfaceVariant
+                    .surfaceContainerHighest
                     .withValues(alpha: 0.8),
               ],
               begin: Alignment.topLeft,
@@ -1228,7 +1454,8 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           child: ExpansionTile(
-            initiallyExpanded: false,
+            key: ValueKey('social_expanded_$_socialExpanded'),
+            initiallyExpanded: _socialExpanded,
             backgroundColor: Colors.transparent,
             collapsedBackgroundColor: Colors.transparent,
             iconColor: Theme.of(context).colorScheme.primary,
@@ -1275,7 +1502,7 @@ class _HomeScreenState extends State<HomeScreen>
                         icon: Icons.group,
                         color: Colors.purple,
                         label: 'Arkadaşlar',
-                        subtitle: 'Arkadaş ekle ve takip et (3 arkadaş limiti)',
+                        subtitle: friendsSubtitle,
                         onTap: () =>
                             Navigator.pushNamed(context, AppRouter.friends),
                       ),
@@ -1298,99 +1525,10 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNavigationCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    bool isFullWidth = false,
-  }) {
-    return Card(
-      elevation: 4,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      icon,
-                      color: color,
-                      size: isFullWidth ? 28 : 24,
-                    ),
-                  ),
-                  if (isFullWidth) ...[
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          Text(
-                            subtitle,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.7),
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              if (!isFullWidth) ...[
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7),
-                      ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1482,7 +1620,7 @@ class _HomeScreenState extends State<HomeScreen>
                           decoration: BoxDecoration(
                             color: Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
+                                .surfaceContainerHighest
                                 .withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1524,7 +1662,7 @@ class _HomeScreenState extends State<HomeScreen>
                           decoration: BoxDecoration(
                             color: Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
+                                .surfaceContainerHighest
                                 .withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1549,6 +1687,24 @@ class _HomeScreenState extends State<HomeScreen>
 }
 
 // Modern ve büyük buton widget'ı
+class _HomeTutorialStep {
+  const _HomeTutorialStep({
+    required this.targetKey,
+    required this.title,
+    required this.description,
+    this.preferTooltipAbove = false,
+    this.scrollToEndFirst = false,
+    this.scrollAlignment = 0.08,
+  });
+
+  final GlobalKey targetKey;
+  final String title;
+  final String description;
+  final bool preferTooltipAbove;
+  final bool scrollToEndFirst;
+  final double scrollAlignment;
+}
+
 class _ModernFeatureButton extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -1568,13 +1724,13 @@ class _ModernFeatureButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final Color bgColor =
-        isDark ? color.withOpacity(0.18) : color.withOpacity(0.08);
+        isDark ? color.withValues(alpha: 0.18) : color.withValues(alpha: 0.08);
     final Color iconBoxColor =
-        isDark ? color.withOpacity(0.32) : color.withOpacity(0.18);
+        isDark ? color.withValues(alpha: 0.32) : color.withValues(alpha: 0.18);
     final Color textColor =
         isDark ? Theme.of(context).colorScheme.onSurface : color;
     final Color subtitleColor = isDark
-        ? Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.85)
+        ? Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.85)
         : Theme.of(context).colorScheme.onSurfaceVariant;
 
     return Material(

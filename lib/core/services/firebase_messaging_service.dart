@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
+import 'package:backgammon_score_tracker/core/services/notification_navigation_service.dart';
 
 class FirebaseMessagingService {
   static final FirebaseMessagingService _instance =
@@ -16,9 +17,12 @@ class FirebaseMessagingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final NotificationService _notificationService = NotificationService();
+  final NotificationNavigationService _notificationNavigationService =
+      NotificationNavigationService();
 
   bool _isInitialized = false;
   String? _fcmToken;
+  bool _isRetryingTokenFetch = false;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -45,15 +49,7 @@ class FirebaseMessagingService {
         throw Exception(ErrorService.notificationPermissionDenied);
       }
 
-      // FCM token'ı al
-      _fcmToken = await _messaging.getToken();
-      if (_fcmToken != null) {
-        debugPrint('FCM Token: $_fcmToken');
-        await _saveFCMToken(_fcmToken!);
-      } else {
-        debugPrint('Failed to get FCM token');
-        throw Exception('FCM token could not be retrieved');
-      }
+      await _fetchAndSaveFcmToken();
 
       // Token yenilendiğinde
       _messaging.onTokenRefresh.listen((newToken) {
@@ -83,6 +79,40 @@ class FirebaseMessagingService {
       debugPrint('Error initializing Firebase Messaging: $e');
       throw Exception(ErrorService.notificationServiceUnavailable);
     }
+  }
+
+  Future<void> _fetchAndSaveFcmToken() async {
+    final apnsToken = await _messaging.getAPNSToken();
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        apnsToken == null) {
+      debugPrint('APNS token is not available yet (simulator/device startup).');
+      _scheduleTokenRetry();
+      return;
+    }
+
+    _fcmToken = await _messaging.getToken();
+    if (_fcmToken != null) {
+      debugPrint('FCM Token: $_fcmToken');
+      await _saveFCMToken(_fcmToken!);
+    } else {
+      debugPrint('FCM token is not available yet.');
+      _scheduleTokenRetry();
+    }
+  }
+
+  void _scheduleTokenRetry() {
+    if (_isRetryingTokenFetch) return;
+    _isRetryingTokenFetch = true;
+    Future.delayed(const Duration(seconds: 5), () async {
+      try {
+        await _fetchAndSaveFcmToken();
+      } catch (_) {
+        // Retry best-effort only.
+      } finally {
+        _isRetryingTokenFetch = false;
+      }
+    });
   }
 
   Future<void> _saveFCMToken(String token) async {
@@ -166,9 +196,7 @@ class FirebaseMessagingService {
   Future<void> _handleMessageOpenedApp(RemoteMessage message) async {
     debugPrint('A new onMessageOpenedApp event was published!');
     debugPrint('Message data: ${message.data}');
-
-    // Burada bildirime tıklandığında yapılacak işlemler
-    // Örneğin: Belirli bir sayfaya yönlendirme
+    await _notificationNavigationService.handleTap(message.data);
   }
 
   Future<void> _saveNotificationToFirestore(RemoteMessage message) async {

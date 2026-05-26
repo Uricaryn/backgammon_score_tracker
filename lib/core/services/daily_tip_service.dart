@@ -193,7 +193,7 @@ class DailyTipService {
 
     // Maksimum uzunluk kontrolü
     if (cleaned.length > 200) {
-      cleaned = cleaned.substring(0, 200) + '...';
+      cleaned = '${cleaned.substring(0, 200)}...';
     }
 
     // Minimum uzunluk kontrolü

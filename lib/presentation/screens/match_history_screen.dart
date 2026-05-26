@@ -21,7 +21,6 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
   bool _isLoading = false;
   bool _isGuestUser = false;
   Map<String, dynamic>? _cachedGameData;
-  DateTime? _lastRefresh;
 
   @override
   void initState() {
@@ -72,7 +71,6 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
           'timestamp': DateTime.now(),
           'data': games,
         };
-        _lastRefresh = DateTime.now();
       });
     }
   }
@@ -100,7 +98,6 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
                   })
               .toList(),
         };
-        _lastRefresh = DateTime.now();
       });
     }
   }

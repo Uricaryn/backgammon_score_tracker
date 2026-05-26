@@ -178,12 +178,12 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              color.withOpacity(0.2),
-              color.withOpacity(0.1),
+              color.withValues(alpha: 0.2),
+              color.withValues(alpha: 0.1),
             ],
           ),
           border: Border.all(
-            color: color.withOpacity(0.3),
+            color: color.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -198,7 +198,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                 title,
                 style: TextStyle(
                   fontSize: 12,
-                  color: color.withOpacity(0.9),
+                  color: color.withValues(alpha: 0.9),
                   fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
@@ -232,7 +232,6 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
     // For single player mode, determine which player is our focus player
     String displayPlayer1, displayPlayer2;
     int displayPlayer1Score, displayPlayer2Score;
-    bool isPlayer1Focus = false;
 
     if (widget.player2 == null) {
       // Single player mode - always show focus player first
@@ -241,13 +240,11 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
         displayPlayer2 = matchPlayer2;
         displayPlayer1Score = player1Score;
         displayPlayer2Score = player2Score;
-        isPlayer1Focus = true;
       } else {
         displayPlayer1 = matchPlayer2;
         displayPlayer2 = matchPlayer1;
         displayPlayer1Score = player2Score;
         displayPlayer2Score = player1Score;
-        isPlayer1Focus = true;
       }
     } else {
       // Two player mode - original logic
@@ -256,7 +253,6 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
       displayPlayer2 = widget.player2!;
       displayPlayer1Score = isPlayer1First ? player1Score : player2Score;
       displayPlayer2Score = isPlayer1First ? player2Score : player1Score;
-      isPlayer1Focus = true;
     }
 
     return Card(
@@ -266,10 +262,10 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withOpacity(0.7),
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
         child: ClipRRect(
@@ -417,19 +413,19 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                               colors: [
                                 Theme.of(context)
                                     .colorScheme
-                                    .surfaceVariant
-                                    .withOpacity(0.7),
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.7),
                                 Theme.of(context)
                                     .colorScheme
-                                    .surfaceVariant
-                                    .withOpacity(0.5),
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
                               ],
                             ),
                             border: Border.all(
                               color: Theme.of(context)
                                   .colorScheme
                                   .outline
-                                  .withOpacity(0.2),
+                                  .withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -450,7 +446,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primary
-                                                .withOpacity(0.1),
+                                                .withValues(alpha: 0.1),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
@@ -538,19 +534,19 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                               colors: [
                                 Theme.of(context)
                                     .colorScheme
-                                    .surfaceVariant
-                                    .withOpacity(0.7),
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.7),
                                 Theme.of(context)
                                     .colorScheme
-                                    .surfaceVariant
-                                    .withOpacity(0.5),
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
                               ],
                             ),
                             border: Border.all(
                               color: Theme.of(context)
                                   .colorScheme
                                   .outline
-                                  .withOpacity(0.2),
+                                  .withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -571,7 +567,7 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primary
-                                                .withOpacity(0.1),
+                                                .withValues(alpha: 0.1),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),

@@ -233,7 +233,7 @@ class _EditGameScreenState extends State<EditGameScreen> {
                                     return Column(
                                       children: [
                                         DropdownButtonFormField<String>(
-                                          value: _selectedPlayer1,
+                                          initialValue: _selectedPlayer1,
                                           decoration: const InputDecoration(
                                             labelText: '1. Oyuncu',
                                             border: OutlineInputBorder(),
@@ -259,7 +259,7 @@ class _EditGameScreenState extends State<EditGameScreen> {
                                         ),
                                         const SizedBox(height: 16),
                                         DropdownButtonFormField<String>(
-                                          value: _selectedPlayer2,
+                                          initialValue: _selectedPlayer2,
                                           decoration: const InputDecoration(
                                             labelText: '2. Oyuncu',
                                             border: OutlineInputBorder(),
@@ -305,19 +305,19 @@ class _EditGameScreenState extends State<EditGameScreen> {
                             colors: [
                               Theme.of(context)
                                   .colorScheme
-                                  .surfaceVariant
-                                  .withOpacity(0.7),
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.7),
                               Theme.of(context)
                                   .colorScheme
-                                  .surfaceVariant
-                                  .withOpacity(0.5),
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
                             ],
                           ),
                           border: Border.all(
                             color: Theme.of(context)
                                 .colorScheme
                                 .outline
-                                .withOpacity(0.2),
+                                .withValues(alpha: 0.2),
                             width: 1,
                           ),
                         ),
@@ -338,7 +338,7 @@ class _EditGameScreenState extends State<EditGameScreen> {
                                           color: Theme.of(context)
                                               .colorScheme
                                               .primary
-                                              .withOpacity(0.1),
+                                              .withValues(alpha: 0.1),
                                           borderRadius:
                                               BorderRadius.circular(12),
                                         ),

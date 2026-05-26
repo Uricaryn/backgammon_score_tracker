@@ -1,10 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/log_service.dart';
-import 'package:backgammon_score_tracker/core/services/notification_service.dart';
-import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
 class FriendshipService {
@@ -15,7 +12,6 @@ class FriendshipService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final LogService _logService = LogService();
-  final NotificationService _notificationService = NotificationService();
   final PremiumService _premiumService = PremiumService();
 
   // Friend request statuses
@@ -45,7 +41,7 @@ class FriendshipService {
       final usernameQuery = await _firestore
           .collection('users')
           .where('username', isGreaterThanOrEqualTo: query.toLowerCase())
-          .where('username', isLessThan: query.toLowerCase() + '\uf8ff')
+          .where('username', isLessThan: '${query.toLowerCase()}\uf8ff')
           .limit(15)
           .get();
 
@@ -53,7 +49,7 @@ class FriendshipService {
       final emailQuery = await _firestore
           .collection('users')
           .where('email', isGreaterThanOrEqualTo: query.toLowerCase())
-          .where('email', isLessThan: query.toLowerCase() + '\uf8ff')
+          .where('email', isLessThan: '${query.toLowerCase()}\uf8ff')
           .limit(10)
           .get();
 
@@ -61,7 +57,7 @@ class FriendshipService {
       final displayNameQuery = await _firestore
           .collection('users')
           .where('displayName', isGreaterThanOrEqualTo: query.toLowerCase())
-          .where('displayName', isLessThan: query.toLowerCase() + '\uf8ff')
+          .where('displayName', isLessThan: '${query.toLowerCase()}\uf8ff')
           .limit(10)
           .get();
 
@@ -101,21 +97,33 @@ class FriendshipService {
 
         // Tam eşleşme önce
         if (aUsername == query.toLowerCase() &&
-            bUsername != query.toLowerCase()) return -1;
+            bUsername != query.toLowerCase()) {
+          return -1;
+        }
         if (bUsername == query.toLowerCase() &&
-            aUsername != query.toLowerCase()) return 1;
+            aUsername != query.toLowerCase()) {
+          return 1;
+        }
 
         // Başlangıç eşleşmesi
         if (aUsername.startsWith(query.toLowerCase()) &&
-            !bUsername.startsWith(query.toLowerCase())) return -1;
+            !bUsername.startsWith(query.toLowerCase())) {
+          return -1;
+        }
         if (bUsername.startsWith(query.toLowerCase()) &&
-            !aUsername.startsWith(query.toLowerCase())) return 1;
+            !aUsername.startsWith(query.toLowerCase())) {
+          return 1;
+        }
 
         // Email eşleşmesi
         if (aEmail.startsWith(query.toLowerCase()) &&
-            !bEmail.startsWith(query.toLowerCase())) return -1;
+            !bEmail.startsWith(query.toLowerCase())) {
+          return -1;
+        }
         if (bEmail.startsWith(query.toLowerCase()) &&
-            !aEmail.startsWith(query.toLowerCase())) return 1;
+            !aEmail.startsWith(query.toLowerCase())) {
+          return 1;
+        }
 
         // Alfabetik sıralama
         return aUsername.compareTo(bUsername);

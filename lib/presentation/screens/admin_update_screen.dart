@@ -2,10 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
-import 'package:backgammon_score_tracker/core/services/notification_service.dart';
+import 'package:backgammon_score_tracker/core/services/cloud_functions_safe_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 
 class AdminUpdateScreen extends StatefulWidget {
@@ -42,6 +41,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
 
   bool _isLoading = false;
   List<Map<String, dynamic>> _scheduledNotifications = [];
+  final _cloudFunctionsSafe = CloudFunctionsSafeService();
 
   // User Management
   List<Map<String, dynamic>> _users = [];
@@ -160,18 +160,31 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
 
   // Load scheduled notifications
   Future<void> _loadScheduledNotifications() async {
+    if (!await _cloudFunctionsSafe.isEnabled()) {
+      setState(() => _scheduledNotifications = []);
+      return;
+    }
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('getScheduledNotifications');
-
-      // Add timeout to prevent hanging
-      final result = await callable.call().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException(
-              'İstek zaman aşımına uğradı', const Duration(seconds: 10));
-        },
-      );
+      final result = await _cloudFunctionsSafe.call('getScheduledNotifications');
+      if (result == null || result.data is! Map) {
+        setState(() => _scheduledNotifications = []);
+        return;
+      }
+      final data = result.data as Map;
+      if (data['success'] == true) {
+        setState(() {
+          final notifications = data['notifications'] as List?;
+          if (notifications != null) {
+            _scheduledNotifications = notifications
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+          } else {
+            _scheduledNotifications = [];
+          }
+        });
+      } else {
+        setState(() => _scheduledNotifications = []);
+      }
 
       if (result.data['success']) {
         setState(() {
@@ -192,7 +205,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
         });
       }
     } catch (e) {
-      print('Error loading scheduled notifications: $e');
+      debugPrint('Error loading scheduled notifications: $e');
 
       // Initialize with empty list if there's an error
       setState(() {
@@ -202,7 +215,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
       // Only show error for critical issues, not for empty collection
       if (e.toString().contains('not found') ||
           e.toString().contains('INTERNAL')) {
-        print('Scheduled notifications collection not yet initialized');
+        debugPrint('Scheduled notifications collection not yet initialized');
       } else {
         _showError('Zamanlanmış bildirimler yüklenemedi: $e');
       }
@@ -239,21 +252,28 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
   // Send general notification
   Future<void> _sendGeneralNotification() async {
     if (!_generalFormKey.currentState!.validate()) return;
+    if (!await _cloudFunctionsSafe.isEnabled()) {
+      _showError(
+          'Genel bildirim bu platformda geçici olarak devre dışı.');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('sendGeneralNotification');
-      final result = await callable.call({
-        'title': _generalTitleController.text.trim(),
-        'message': _generalMessageController.text.trim(),
-        'targetAudience': _targetAudience,
-      });
+      final result = await _cloudFunctionsSafe.call(
+        'sendGeneralNotification',
+        data: {
+          'title': _generalTitleController.text.trim(),
+          'message': _generalMessageController.text.trim(),
+          'targetAudience': _targetAudience,
+        },
+      );
 
-      if (result.data['success']) {
+      if (result != null && result.data is Map && (result.data as Map)['success'] == true) {
+        final map = result.data as Map;
         _showSuccess(
-            'Genel bildirim başarıyla gönderildi! (${result.data['totalSent']} kullanıcı)');
+            'Genel bildirim başarıyla gönderildi! (${map['totalSent']} kullanıcı)');
         _generalFormKey.currentState!.reset();
         _generalTitleController.clear();
         _generalMessageController.clear();
@@ -273,6 +293,11 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
   // Schedule notification
   Future<void> _scheduleNotification() async {
     if (!_scheduledFormKey.currentState!.validate()) return;
+    if (!await _cloudFunctionsSafe.isEnabled()) {
+      _showError(
+          'Zamanlanmış bildirim bu platformda geçici olarak devre dışı.');
+      return;
+    }
     if (_scheduledTime == null) {
       _showError('Lütfen bir tarih ve saat seçin');
       return;
@@ -281,16 +306,17 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
     setState(() => _isLoading = true);
 
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('scheduleNotification');
-      final result = await callable.call({
-        'title': _scheduledTitleController.text.trim(),
-        'message': _scheduledMessageController.text.trim(),
-        'scheduledTime': _scheduledTime!.toIso8601String(),
-        'targetAudience': _scheduledTargetAudience,
-      });
+      final result = await _cloudFunctionsSafe.call(
+        'scheduleNotification',
+        data: {
+          'title': _scheduledTitleController.text.trim(),
+          'message': _scheduledMessageController.text.trim(),
+          'scheduledTime': _scheduledTime!.toIso8601String(),
+          'targetAudience': _scheduledTargetAudience,
+        },
+      );
 
-      if (result.data['success']) {
+      if (result != null && result.data is Map && (result.data as Map)['success'] == true) {
         _showSuccess('Bildirim başarıyla zamanlandı!');
         _scheduledFormKey.currentState!.reset();
         _scheduledTitleController.clear();
@@ -312,12 +338,17 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
 
   // Cancel scheduled notification
   Future<void> _cancelScheduledNotification(String notificationId) async {
+    if (!await _cloudFunctionsSafe.isEnabled()) {
+      _showError('Bu özellik geçici olarak bakımda.');
+      return;
+    }
     try {
-      final callable = FirebaseFunctions.instance
-          .httpsCallable('cancelScheduledNotification');
-      final result = await callable.call({'notificationId': notificationId});
+      final result = await _cloudFunctionsSafe.call(
+        'cancelScheduledNotification',
+        data: {'notificationId': notificationId},
+      );
 
-      if (result.data['success']) {
+      if (result != null && result.data is Map && (result.data as Map)['success'] == true) {
         _showSuccess('Zamanlanmış bildirim iptal edildi!');
         _loadScheduledNotifications();
       } else {
@@ -330,6 +361,11 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
 
   // Run user migration
   Future<void> _runUserMigration() async {
+    if (!await _cloudFunctionsSafe.isEnabled()) {
+      _showError('Migration işlemi geçici olarak bakımda.');
+      return;
+    }
+    if (!mounted) return;
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -357,67 +393,19 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
     setState(() => _isLoading = true);
 
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('migrateUserActiveField');
-      final result = await callable.call();
+      final result = await _cloudFunctionsSafe.call('migrateUserActiveField');
 
-      if (result.data['success']) {
+      if (result != null && result.data is Map && (result.data as Map)['success'] == true) {
+        final map = result.data as Map;
         _showSuccess(
-          'Migration tamamlandı! ${result.data['updatedUsers']} kullanıcı güncellendi. '
-          'Toplam kullanıcı: ${result.data['totalUsers']}',
+          'Migration tamamlandı! ${map['updatedUsers']} kullanıcı güncellendi. '
+          'Toplam kullanıcı: ${map['totalUsers']}',
         );
       } else {
         _showError('Migration başarısız oldu');
       }
     } catch (e) {
       _showError('Migration hatası: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // Test local notification
-  Future<void> _testLocalNotification() async {
-    try {
-      final notificationService = NotificationService();
-      await notificationService.initialize();
-      await notificationService.createNotificationChannels();
-
-      await notificationService.showNotification(
-        title: 'Yerel Test Bildirimi',
-        body:
-            'Bu bir yerel test bildirimidir. Eğer bu bildirimi görüyorsanız, bildirim sistemi çalışıyor demektir.',
-        payload: 'local_test_notification',
-      );
-
-      _showSuccess('Yerel test bildirimi gösterildi!');
-    } catch (e) {
-      _showError('Yerel test bildirimi gösterilemedi: $e');
-    }
-  }
-
-  // Test general notification
-  Future<void> _testGeneralNotification() async {
-    if (!_generalFormKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('testGeneralNotification');
-      final result = await callable.call({
-        'title': _generalTitleController.text.trim(),
-        'message': _generalMessageController.text.trim(),
-        'targetAudience': _targetAudience,
-      });
-
-      if (result.data['success']) {
-        _showSuccess('Test bildirimi başarıyla oluşturuldu!');
-      } else {
-        _showError('Test bildirimi oluşturulamadı');
-      }
-    } catch (e) {
-      _showError('Test bildirimi oluşturulamadı: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -502,7 +490,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
@@ -703,7 +691,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
@@ -798,7 +786,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        value: _targetAudience,
+                        initialValue: _targetAudience,
                         decoration: const InputDecoration(
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.group),
@@ -961,7 +949,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Text(
@@ -1052,6 +1040,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                                 DateTime.now().add(const Duration(days: 365)),
                           );
                           if (date != null) {
+                            if (!mounted) return;
                             final time = await showTimePicker(
                               context: context,
                               initialTime: TimeOfDay.now(),
@@ -1097,7 +1086,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
 
                       // Target Audience
                       DropdownButtonFormField<String>(
-                        value: _scheduledTargetAudience,
+                        initialValue: _scheduledTargetAudience,
                         decoration: const InputDecoration(
                           labelText: 'Hedef Kitle',
                           border: OutlineInputBorder(),
@@ -1610,8 +1599,8 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                             child: ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: isActive
-                                    ? Colors.green.withOpacity(0.2)
-                                    : Colors.red.withOpacity(0.2),
+                                    ? Colors.green.withValues(alpha: 0.2)
+                                    : Colors.red.withValues(alpha: 0.2),
                                 child: Icon(
                                   isActive ? Icons.person : Icons.person_off,
                                   color: isActive ? Colors.green : Colors.red,
@@ -1634,7 +1623,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                                               horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
                                             color:
-                                                Colors.purple.withOpacity(0.2),
+                                                Colors.purple.withValues(alpha: 0.2),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
@@ -1648,7 +1637,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                                               horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
                                             color:
-                                                Colors.orange.withOpacity(0.2),
+                                                Colors.orange.withValues(alpha: 0.2),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
@@ -1798,7 +1787,7 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Text(
@@ -1940,8 +1929,8 @@ class _AdminUpdateScreenState extends State<AdminUpdateScreen>
                             child: ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: isPremium
-                                    ? Colors.amber.withOpacity(0.2)
-                                    : Colors.grey.withOpacity(0.2),
+                                    ? Colors.amber.withValues(alpha: 0.2)
+                                    : Colors.grey.withValues(alpha: 0.2),
                                 child: Icon(
                                   isPremium ? Icons.star : Icons.star_border,
                                   color: isPremium

@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
-import 'package:backgammon_score_tracker/presentation/widgets/new_game_player_selector.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:ui';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
-import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 
 class NewGameScreen extends StatefulWidget {
@@ -17,7 +14,6 @@ class NewGameScreen extends StatefulWidget {
 }
 
 class _NewGameScreenState extends State<NewGameScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _firebaseService = FirebaseService();
   final _guestDataService = GuestDataService();
   String? _selectedPlayer1;
@@ -33,22 +29,12 @@ class _NewGameScreenState extends State<NewGameScreen> {
 
   // ✅ Performance optimizations
   List<String>? _cachedPlayerNames;
-  bool _needsRefresh = true;
-
   // Adım başlıkları
   final List<String> _stepTitles = [
     'Oyuncu Seçimi',
     'Skor Girişi',
     'Önizleme',
     'Kaydetme'
-  ];
-
-  // Adım açıklamaları
-  final List<String> _stepDescriptions = [
-    'Maç için iki oyuncu seçin',
-    'Her oyuncunun skorunu girin',
-    'Maç detaylarını kontrol edin',
-    'Maçı kaydedin'
   ];
 
   @override
@@ -131,7 +117,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
           return Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -139,7 +125,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                 Icon(
                   Icons.people_outline,
                   size: 48,
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -178,7 +164,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                   color: Theme.of(context)
                       .colorScheme
                       .primaryContainer
-                      .withOpacity(0.3),
+                      .withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -206,11 +192,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
                 ),
               ),
               child: DropdownButtonFormField<String>(
-                value: _selectedPlayer1,
+                initialValue: _selectedPlayer1,
                 decoration: InputDecoration(
                   labelText: '1. Oyuncu',
                   border: InputBorder.none,
@@ -246,11 +232,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
                 ),
               ),
               child: DropdownButtonFormField<String>(
-                value: _selectedPlayer2,
+                initialValue: _selectedPlayer2,
                 decoration: InputDecoration(
                   labelText: '2. Oyuncu',
                   border: InputBorder.none,
@@ -421,14 +407,6 @@ class _NewGameScreenState extends State<NewGameScreen> {
     }
   }
 
-  void _goToStep(int step) {
-    if (step >= 0 && step < _totalSteps && step != _currentStep) {
-      setState(() {
-        _currentStep = step;
-      });
-    }
-  }
-
   bool _canGoToNextStep() {
     switch (_currentStep) {
       case 0: // Oyuncu seçimi
@@ -509,7 +487,6 @@ class _NewGameScreenState extends State<NewGameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
     final isSmallScreen = MediaQuery.of(context).size.width < 400;
 
     return Scaffold(
@@ -524,7 +501,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                 // Progress indicator
                 LinearProgressIndicator(
                   value: (_currentStep + 1) / _totalSteps,
-                  backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   valueColor: AlwaysStoppedAnimation<Color>(
                     Theme.of(context).colorScheme.primary,
                   ),
@@ -721,7 +698,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                               decoration: BoxDecoration(
                                 color: Theme.of(context)
                                     .colorScheme
-                                    .surfaceVariant,
+                                    .surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -732,7 +709,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .primary
-                                        .withOpacity(0.5),
+                                        .withValues(alpha: 0.5),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
@@ -776,7 +753,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .primaryContainer
-                                        .withOpacity(0.3),
+                                        .withValues(alpha: 0.3),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Column(
@@ -866,11 +843,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .outline
-                                        .withOpacity(0.2),
+                                        .withValues(alpha: 0.2),
                                   ),
                                 ),
                                 child: DropdownButtonFormField<String>(
-                                  value: _selectedPlayer1,
+                                  initialValue: _selectedPlayer1,
                                   decoration: InputDecoration(
                                     labelText: '1. Oyuncu',
                                     border: InputBorder.none,
@@ -910,11 +887,11 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                     color: Theme.of(context)
                                         .colorScheme
                                         .outline
-                                        .withOpacity(0.2),
+                                        .withValues(alpha: 0.2),
                                   ),
                                 ),
                                 child: DropdownButtonFormField<String>(
-                                  value: _selectedPlayer2,
+                                  initialValue: _selectedPlayer2,
                                   decoration: InputDecoration(
                                     labelText: '2. Oyuncu',
                                     border: InputBorder.none,
@@ -978,7 +955,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Container(
+                SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () {
@@ -1040,7 +1017,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                             backgroundColor: Theme.of(context)
                                 .colorScheme
                                 .primary
-                                .withOpacity(0.1),
+                                .withValues(alpha: 0.1),
                             child: Icon(
                               Icons.person,
                               color: Theme.of(context).colorScheme.primary,
@@ -1067,7 +1044,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                         color: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.1),
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -1086,7 +1063,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                             backgroundColor: Theme.of(context)
                                 .colorScheme
                                 .primary
-                                .withOpacity(0.1),
+                                .withValues(alpha: 0.1),
                             child: Icon(
                               Icons.person,
                               color: Theme.of(context).colorScheme.primary,
@@ -1339,8 +1316,8 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                 ? Theme.of(context)
                                     .colorScheme
                                     .primary
-                                    .withOpacity(0.2)
-                                : Theme.of(context).colorScheme.surfaceVariant,
+                                    .withValues(alpha: 0.2)
+                                : Theme.of(context).colorScheme.surfaceContainerHighest,
                             child: Icon(
                               Icons.person,
                               size: 30,
@@ -1383,7 +1360,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                         color: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.1),
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -1404,8 +1381,8 @@ class _NewGameScreenState extends State<NewGameScreen> {
                                 ? Theme.of(context)
                                     .colorScheme
                                     .primary
-                                    .withOpacity(0.2)
-                                : Theme.of(context).colorScheme.surfaceVariant,
+                                    .withValues(alpha: 0.2)
+                                : Theme.of(context).colorScheme.surfaceContainerHighest,
                             child: Icon(
                               Icons.person,
                               size: 30,
@@ -1452,7 +1429,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                       color: Theme.of(context)
                           .colorScheme
                           .primary
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -1544,7 +1521,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                   height: 80,
                   decoration: BoxDecoration(
                     color:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -1612,7 +1589,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                       ),
                     ),
                     Text(
-                      '${_selectedPlayer1 ?? "Seçilmedi"}',
+                      _selectedPlayer1 ?? "Seçilmedi",
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.onSurface,
@@ -1631,7 +1608,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
                       ),
                     ),
                     Text(
-                      '${_selectedPlayer2 ?? "Seçilmedi"}',
+                      _selectedPlayer2 ?? "Seçilmedi",
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.onSurface,

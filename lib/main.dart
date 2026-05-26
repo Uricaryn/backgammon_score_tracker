@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
+import 'package:backgammon_score_tracker/firebase_options.dart';
 import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
 import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
 import 'package:backgammon_score_tracker/core/theme/app_theme.dart';
 import 'package:provider/provider.dart';
-import 'package:backgammon_score_tracker/firebase_options.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_messaging_service.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
@@ -20,10 +19,20 @@ import 'package:backgammon_score_tracker/core/services/ad_service.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+bool _isFirebaseReady = false;
+
 // Background message handler
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (!_isFirebaseReady && Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  if (!_isFirebaseReady && Firebase.apps.isEmpty) {
+    return;
+  }
 
   // Background'da bildirim göster
   try {
@@ -42,7 +51,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       // Notification payload varsa onu kullan
       title = message.notification!.title ?? 'Yeni Bildirim';
       body = message.notification!.body ?? '';
-      print('Background notification with notification payload: $title');
+      debugPrint('Background notification with notification payload: $title');
     } else {
       // Data-only message için data'dan al
       title = message.data['title'] as String? ??
@@ -51,7 +60,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       body = message.data['message'] as String? ??
           message.data['body'] as String? ??
           '';
-      print('Background notification with data payload: $title');
+      debugPrint('Background notification with data payload: $title');
     }
 
     if (title.isNotEmpty && body.isNotEmpty) {
@@ -63,12 +72,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         saveToFirebase: false, // Background'da Firebase'e kaydetme
       );
 
-      print('Background notification shown: $title');
+      debugPrint('Background notification shown: $title');
     } else {
-      print('No valid title/body found in background message');
+      debugPrint('No valid title/body found in background message');
     }
   } catch (e) {
-    print('Error showing background notification: $e');
+    debugPrint('Error showing background notification: $e');
   }
 }
 
@@ -91,14 +100,18 @@ Future<void> _initializeCriticalServices() async {
     // ✅ Paralel initialization
     await Future.wait([
       // Firebase - kritik
-      Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+      Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ),
       // Timezone - bildirimler için gerekli
       Future.microtask(() => tz.initializeTimeZones()),
     ]);
+    _isFirebaseReady = true;
 
     // Firebase messaging background handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   } catch (e) {
+    _isFirebaseReady = false;
     debugPrint('Critical services initialization error: $e');
   }
 }
@@ -229,7 +242,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final PremiumService _premiumService = PremiumService();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   StreamSubscription<User?>? _authStateSubscription;
 
   @override
@@ -245,7 +257,13 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _setupAuthStateListener() {
-    _authStateSubscription = _auth.authStateChanges().listen((User? user) {
+    if (!_isFirebaseReady || Firebase.apps.isEmpty) {
+      debugPrint('Firebase is not initialized, auth listener skipped.');
+      return;
+    }
+
+    final FirebaseAuth auth = FirebaseAuth.instance;
+    _authStateSubscription = auth.authStateChanges().listen((User? user) {
       if (user == null) {
         // Kullanıcı çıkış yaptığında premium cache'i temizle
         _premiumService.clearPremiumCache();
@@ -264,6 +282,7 @@ class _MyAppState extends State<MyApp> {
         builder: (context, themeProvider, child) {
           return MaterialApp(
             title: 'Tavla Skor Takip',
+            navigatorKey: AppRouter.navigatorKey,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeProvider.getThemeMode(),

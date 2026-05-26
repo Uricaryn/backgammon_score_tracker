@@ -20,8 +20,6 @@ class UpdateNotificationService {
 
   // Update notification constants
   static const String _updateNotificationTopic = 'app_updates_beta';
-  static const String _updateNotificationChannel = 'update_notifications';
-
   /// Initialize update notification system
   Future<void> initialize() async {
     try {
@@ -182,6 +180,7 @@ class UpdateNotificationService {
 
         // Check if this version is newer than current
         if (await _isNewerVersion(version)) {
+          if (!context.mounted) return;
           _showUpdateDialog(
               context, version, message, forceUpdate, downloadUrl);
 
@@ -285,10 +284,10 @@ class UpdateNotificationService {
                 color: Theme.of(context)
                     .colorScheme
                     .primaryContainer
-                    .withOpacity(0.3),
+                    .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                 ),
               ),
               child: Row(
@@ -319,10 +318,10 @@ class UpdateNotificationService {
                   color: Theme.of(context)
                       .colorScheme
                       .errorContainer
-                      .withOpacity(0.3),
+                      .withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.error.withOpacity(0.2),
+                    color: Theme.of(context).colorScheme.error.withValues(alpha: 0.2),
                   ),
                 ),
                 child: Row(
@@ -352,8 +351,8 @@ class UpdateNotificationService {
                 decoration: BoxDecoration(
                   color: Theme.of(context)
                       .colorScheme
-                      .surfaceVariant
-                      .withOpacity(0.5),
+                      .surfaceContainerHighest
+                      .withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -448,7 +447,7 @@ class UpdateNotificationService {
     } catch (e) {
       _logService.error('Failed to send update notification to beta users',
           tag: 'UpdateNotification', error: e);
-      throw e;
+      rethrow;
     }
   }
 

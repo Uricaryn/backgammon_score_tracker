@@ -35,21 +35,21 @@ class StyledCard extends StatelessWidget {
           ),
           border: Border.all(
             color: isDark
-                ? Theme.of(context).colorScheme.outline.withOpacity(0.3)
-                : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)
+                : Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
             width: isDark ? 1.5 : 1.0,
           ),
           boxShadow: isDark
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
                 ]
               : [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),

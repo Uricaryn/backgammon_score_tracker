@@ -3,7 +3,6 @@ import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/presentation/screens/edit_player_screen.dart';
-import 'package:backgammon_score_tracker/presentation/screens/login_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/player_match_history_screen.dart';
 import 'dart:ui';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
@@ -176,8 +175,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
           SnackBar(
             content: Text(_isGuestUser
                 ? 'Oyuncu ve ilişkili maçlar yerel olarak silindi'
-                : ErrorService.successPlayerDeleted +
-                    ' (İlişkili maçlar da silindi)'),
+                : '${ErrorService.successPlayerDeleted} (İlişkili maçlar da silindi)'),
           ),
         );
       }
@@ -289,19 +287,19 @@ class _PlayersScreenState extends State<PlayersScreen> {
                           colors: [
                             Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
-                                .withOpacity(0.7),
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.7),
                             Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
-                                .withOpacity(0.5),
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.5),
                           ],
                         ),
                         border: Border.all(
                           color: Theme.of(context)
                               .colorScheme
                               .outline
-                              .withOpacity(0.2),
+                              .withValues(alpha: 0.2),
                           width: 1,
                         ),
                       ),
@@ -322,7 +320,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                                         color: Theme.of(context)
                                             .colorScheme
                                             .primary
-                                            .withOpacity(0.1),
+                                            .withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Icon(
@@ -474,7 +472,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurfaceVariant
-                    .withOpacity(0.3),
+                    .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -484,7 +482,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
               children: [
                 CircleAvatar(
                   backgroundColor:
-                      Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   child: Icon(
                     Icons.person,
                     color: Theme.of(context).colorScheme.primary,
@@ -512,7 +510,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                     ? Theme.of(context)
                         .colorScheme
                         .onSurfaceVariant
-                        .withOpacity(0.5)
+                        .withValues(alpha: 0.5)
                     : Theme.of(context).colorScheme.primary,
               ),
               title: Text(
@@ -522,7 +520,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       ? Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant
-                          .withOpacity(0.5)
+                          .withValues(alpha: 0.5)
                       : null,
                 ),
               ),
@@ -535,7 +533,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       ? Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant
-                          .withOpacity(0.5)
+                          .withValues(alpha: 0.5)
                       : null,
                 ),
               ),
@@ -556,7 +554,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             ),
                             FilledButton(
                               onPressed: () {
-                                print(
+                                debugPrint(
                                     'DEBUG: İstatistik Giriş Yap butonuna tıklandı');
                                 Navigator.pop(context);
                                 Navigator.pushReplacementNamed(
@@ -571,9 +569,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                     }
                   : () {
                       Navigator.pop(context);
-                      Future.microtask(() {
-                        _showPlayerStatistics(parentContext, playerName);
-                      });
+                      _showPlayerStatistics(parentContext, playerName);
                     },
             ),
             ListTile(
@@ -583,7 +579,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                     ? Theme.of(context)
                         .colorScheme
                         .onSurfaceVariant
-                        .withOpacity(0.5)
+                        .withValues(alpha: 0.5)
                     : Theme.of(context).colorScheme.primary,
               ),
               title: Text(
@@ -593,7 +589,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       ? Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant
-                          .withOpacity(0.5)
+                          .withValues(alpha: 0.5)
                       : null,
                 ),
               ),
@@ -606,7 +602,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       ? Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant
-                          .withOpacity(0.5)
+                          .withValues(alpha: 0.5)
                       : null,
                 ),
               ),
@@ -627,7 +623,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             ),
                             FilledButton(
                               onPressed: () {
-                                print(
+                                debugPrint(
                                     'DEBUG: Maç Geçmişi Giriş Yap butonuna tıklandı');
                                 Navigator.pop(context);
                                 Navigator.pushReplacementNamed(
@@ -642,9 +638,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                     }
                   : () {
                       Navigator.pop(context);
-                      Future.microtask(() {
-                        _showMatchHistoryDialog(parentContext, playerName);
-                      });
+                      _showMatchHistoryDialog(parentContext, playerName);
                     },
             ),
             ListTile(
@@ -654,7 +648,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                     ? Theme.of(context)
                         .colorScheme
                         .onSurfaceVariant
-                        .withOpacity(0.5)
+                        .withValues(alpha: 0.5)
                     : Theme.of(context).colorScheme.primary,
               ),
               title: Text(
@@ -664,7 +658,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       ? Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant
-                          .withOpacity(0.5)
+                          .withValues(alpha: 0.5)
                       : null,
                 ),
               ),
@@ -677,7 +671,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       ? Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant
-                          .withOpacity(0.5)
+                          .withValues(alpha: 0.5)
                       : null,
                 ),
               ),
@@ -698,7 +692,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             ),
                             FilledButton(
                               onPressed: () {
-                                print(
+                                debugPrint(
                                     'DEBUG: Tüm Maçlar Giriş Yap butonuna tıklandı');
                                 Navigator.pop(context);
                                 Navigator.pushReplacementNamed(
@@ -713,17 +707,15 @@ class _PlayersScreenState extends State<PlayersScreen> {
                     }
                   : () {
                       Navigator.pop(context);
-                      Future.microtask(() {
-                        Navigator.push(
-                          parentContext,
-                          MaterialPageRoute(
-                            builder: (context) => PlayerMatchHistoryScreen(
-                              player1: playerName,
-                              // player2 is null for single player mode
-                            ),
+                      Navigator.push(
+                        parentContext,
+                        MaterialPageRoute(
+                          builder: (context) => PlayerMatchHistoryScreen(
+                            player1: playerName,
+                            // player2 is null for single player mode
                           ),
-                        );
-                      });
+                        ),
+                      );
                     },
             ),
             ListTile(
@@ -797,7 +789,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
-    print(
+    debugPrint(
         'DEBUG: İstatistikler aranıyor - Oyuncu: $playerName, UserId: $userId');
 
     // ✅ Limit ekle - sadece son 100 oyunu çek (index oluşana kadar)
@@ -808,7 +800,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
         .limit(100)
         .get();
 
-    print('DEBUG: Toplam oyun sayısı: ${snapshot.docs.length}');
+    debugPrint('DEBUG: Toplam oyun sayısı: ${snapshot.docs.length}');
 
     int totalMatches = 0;
     int wins = 0;
@@ -823,12 +815,12 @@ class _PlayersScreenState extends State<PlayersScreen> {
       final player1Score = data['player1Score'] as int;
       final player2Score = data['player2Score'] as int;
 
-      print(
+      debugPrint(
           'DEBUG: Oyun kontrol ediliyor - Player1: $player1, Player2: $player2, Aranan: $playerName');
 
       if (player1 == playerName || player2 == playerName) {
         totalMatches++;
-        print('DEBUG: Eşleşme bulundu! Toplam maç sayısı: $totalMatches');
+        debugPrint('DEBUG: Eşleşme bulundu! Toplam maç sayısı: $totalMatches');
 
         final isPlayer1 = player1 == playerName;
         final score = isPlayer1 ? player1Score : player2Score;
@@ -843,25 +835,25 @@ class _PlayersScreenState extends State<PlayersScreen> {
             (!isPlayer1 && player2Score > player1Score)) {
           wins++;
           opponentWins[opponent] = (opponentWins[opponent] ?? 0) + 1;
-          print('DEBUG: Kazanma! Toplam kazanma: $wins');
+          debugPrint('DEBUG: Kazanma! Toplam kazanma: $wins');
         }
       }
     }
 
-    print(
+    debugPrint(
         'DEBUG: Final istatistikler - Toplam: $totalMatches, Kazanma: $wins, Toplam Puan: $totalScore, En Yüksek: $highestScore');
 
     if (!mounted) return;
 
     showDialog(
-      context: context,
+      context: this.context,
       builder: (context) => AlertDialog(
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -902,19 +894,19 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       colors: [
                         Theme.of(context)
                             .colorScheme
-                            .surfaceVariant
-                            .withOpacity(0.7),
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.7),
                         Theme.of(context)
                             .colorScheme
-                            .surfaceVariant
-                            .withOpacity(0.5),
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.5),
                       ],
                     ),
                     border: Border.all(
                       color: Theme.of(context)
                           .colorScheme
                           .outline
-                          .withOpacity(0.2),
+                          .withValues(alpha: 0.2),
                       width: 1,
                     ),
                   ),
@@ -992,7 +984,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                       .toList();
 
                   return DropdownButtonFormField<String>(
-                    value: selectedPlayer,
+                    initialValue: selectedPlayer,
                     decoration: const InputDecoration(
                       labelText: 'İkinci Oyuncu',
                       border: OutlineInputBorder(),
@@ -1117,7 +1109,7 @@ class _PlayerCardState extends State<PlayerCard>
                       color: Theme.of(context)
                           .colorScheme
                           .primary
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),
@@ -1137,7 +1129,7 @@ class _PlayerCardState extends State<PlayerCard>
                                     backgroundColor: Theme.of(context)
                                         .colorScheme
                                         .primary
-                                        .withOpacity(0.1),
+                                        .withValues(alpha: 0.1),
                                     child: Icon(
                                       Icons.person,
                                       color:
@@ -1164,7 +1156,7 @@ class _PlayerCardState extends State<PlayerCard>
                                     color: Theme.of(context)
                                         .colorScheme
                                         .primary
-                                        .withOpacity(0.6),
+                                        .withValues(alpha: 0.6),
                                     size: 18,
                                   ),
                                 ],
@@ -1183,7 +1175,7 @@ class _PlayerCardState extends State<PlayerCard>
                                 backgroundColor: Theme.of(context)
                                     .colorScheme
                                     .primary
-                                    .withOpacity(0.1),
+                                    .withValues(alpha: 0.1),
                                 child: Icon(
                                   Icons.person,
                                   color: Theme.of(context).colorScheme.primary,
@@ -1208,7 +1200,7 @@ class _PlayerCardState extends State<PlayerCard>
                                 color: Theme.of(context)
                                     .colorScheme
                                     .primary
-                                    .withOpacity(0.6),
+                                    .withValues(alpha: 0.6),
                                 size: 18,
                               ),
                             ],

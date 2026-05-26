@@ -66,16 +66,16 @@ class DiceIconPainter extends CustomPainter {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        color.withOpacity(0.95),
-        color.withOpacity(0.85),
-        color.withOpacity(0.75),
+        color.withValues(alpha: 0.95),
+        color.withValues(alpha: 0.85),
+        color.withValues(alpha: 0.75),
       ],
       stops: const [0.0, 0.5, 1.0],
     );
 
     // Draw shadow with softer edges
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.15)
+      ..color = Colors.black.withValues(alpha: 0.15)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)
       ..isAntiAlias = true;
 
@@ -94,7 +94,7 @@ class DiceIconPainter extends CustomPainter {
 
     // Draw border with anti-aliasing
     final borderPaint = Paint()
-      ..color = Colors.black.withOpacity(0.15)
+      ..color = Colors.black.withValues(alpha: 0.15)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
       ..isAntiAlias = true;
@@ -109,8 +109,8 @@ class DiceIconPainter extends CustomPainter {
     final dotGradient = RadialGradient(
       colors: [
         Colors.white,
-        Colors.white.withOpacity(0.95),
-        Colors.white.withOpacity(0.9),
+        Colors.white.withValues(alpha: 0.95),
+        Colors.white.withValues(alpha: 0.9),
       ],
       stops: const [0.0, 0.5, 1.0],
     );
@@ -124,7 +124,7 @@ class DiceIconPainter extends CustomPainter {
 
     // Draw dots with softer shadows
     final dotShadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.15)
+      ..color = Colors.black.withValues(alpha: 0.15)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3)
       ..isAntiAlias = true;
 

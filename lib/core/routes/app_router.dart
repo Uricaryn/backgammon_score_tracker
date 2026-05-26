@@ -12,9 +12,15 @@ import 'package:backgammon_score_tracker/presentation/screens/friend_detail_scre
 import 'package:backgammon_score_tracker/presentation/screens/scoreboard_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/username_setup_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/email_verification_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/game_lobby_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/live_game_screen.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 
 class AppRouter {
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   static const String splash = '/';
   static const String login = '/login';
   static const String home = '/home';
@@ -28,6 +34,9 @@ class AppRouter {
   static const String friendDetail = '/friend-detail';
   static const String premiumUpgrade = '/premium-upgrade';
   static const String usernameSetup = '/username-setup';
+  static const String emailVerification = '/email-verification';
+  static const String gameLobby = '/game-lobby';
+  static const String liveGame = '/live-game';
 
   // İstatistik sayfaları listesi
   static const List<String> _statisticsRoutes = [
@@ -48,7 +57,7 @@ class AppRouter {
   // Misafir kullanıcılar için login sayfasına yönlendirme
   static Route<dynamic> _redirectToLogin() {
     return MaterialPageRoute(
-      builder: (_) => Scaffold(
+      builder: (context) => Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -67,7 +76,7 @@ class AppRouter {
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pushReplacementNamed(_, login);
+                  Navigator.pushReplacementNamed(context, login);
                 },
                 child: const Text('Oturum Aç'),
               ),
@@ -94,7 +103,10 @@ class AppRouter {
         return MaterialPageRoute(
             builder: (_) => LoginScreen(showSignUp: showSignUp));
       case home:
-        return MaterialPageRoute(builder: (_) => const HomeScreen());
+        final startTutorial = settings.arguments as bool? ?? false;
+        return MaterialPageRoute(
+          builder: (_) => HomeScreen(startTutorial: startTutorial),
+        );
       case newGame:
         return MaterialPageRoute(builder: (_) => const NewGameScreen());
       case statistics:
@@ -121,6 +133,18 @@ class AppRouter {
         );
       case usernameSetup:
         return MaterialPageRoute(builder: (_) => const UsernameSetupScreen());
+      case emailVerification:
+        return MaterialPageRoute(
+          builder: (_) => const EmailVerificationScreen(),
+        );
+      case gameLobby:
+        return MaterialPageRoute(builder: (_) => const GameLobbyScreen());
+      case liveGame:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final roomId = args['roomId'] as String? ?? '';
+        return MaterialPageRoute(
+          builder: (_) => LiveGameScreen(roomId: roomId),
+        );
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(

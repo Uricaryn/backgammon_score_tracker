@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_icon.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/services/session_service.dart';
-import 'package:backgammon_score_tracker/core/services/notification_service.dart';
+import 'package:backgammon_score_tracker/core/auth/auth_verification.dart';
+import 'package:backgammon_score_tracker/core/auth/post_auth_navigation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -119,30 +119,32 @@ class _SplashScreenState extends State<SplashScreen>
             .get();
         if (!userDoc.exists) {
           await FirebaseAuth.instance.signOut();
-          if (mounted)
+          if (mounted) {
             Navigator.pushReplacementNamed(
                 context, AppRouter.login); // Kayıt ekranına yönlendir
+          }
           return;
         }
 
-        // Kullanıcı adı kontrolü
-        final userData = userDoc.data();
-        final username = userData?['username'] as String?;
-        if (username == null || username.isEmpty) {
-          // Kullanıcı adı yoksa username setup ekranına yönlendir
+        if (AuthVerification.requiresEmailVerification(user)) {
           if (mounted) {
-            Navigator.pushReplacementNamed(context, AppRouter.usernameSetup);
+            await PostAuthNavigation.go(context, user: user);
           }
           return;
         }
 
         final isSessionActive = await _sessionService.isSessionActive();
-        if (isSessionActive) {
-          await _sessionService.refreshSession();
-          if (mounted) Navigator.pushReplacementNamed(context, AppRouter.home);
-        } else {
+        if (!isSessionActive) {
           await _sessionService.logout();
-          if (mounted) Navigator.pushReplacementNamed(context, AppRouter.login);
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, AppRouter.login);
+          }
+          return;
+        }
+
+        await _sessionService.refreshSession();
+        if (mounted) {
+          await PostAuthNavigation.go(context, user: user);
         }
       } else {
         if (mounted) Navigator.pushReplacementNamed(context, AppRouter.login);
@@ -169,9 +171,9 @@ class _SplashScreenState extends State<SplashScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Theme.of(context).colorScheme.primary.withOpacity(0.1),
-              Theme.of(context).colorScheme.secondary.withOpacity(0.05),
-              Theme.of(context).colorScheme.tertiary.withOpacity(0.1),
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+              Theme.of(context).colorScheme.secondary.withValues(alpha: 0.05),
+              Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.1),
             ],
           ),
         ),
@@ -182,7 +184,7 @@ class _SplashScreenState extends State<SplashScreen>
               child: CustomPaint(
                 painter: BackgroundPatternPainter(
                   color:
-                      Theme.of(context).colorScheme.primary.withOpacity(0.03),
+                      Theme.of(context).colorScheme.primary.withValues(alpha: 0.03),
                 ),
               ),
             ),
@@ -213,7 +215,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   Theme.of(context)
                                       .colorScheme
                                       .primaryContainer
-                                      .withOpacity(0.8),
+                                      .withValues(alpha: 0.8),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(35),
@@ -222,7 +224,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   color: Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.3),
+                                      .withValues(alpha: 0.3),
                                   blurRadius: 30,
                                   offset: const Offset(0, 15),
                                 ),
@@ -230,7 +232,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   color: Theme.of(context)
                                       .colorScheme
                                       .shadow
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   blurRadius: 10,
                                   offset: const Offset(0, 5),
                                 ),

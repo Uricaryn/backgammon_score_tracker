@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:backgammon_score_tracker/core/services/tournament_service.dart';
+import 'package:backgammon_score_tracker/core/services/tournament_match_service.dart';
+import 'package:backgammon_score_tracker/core/services/realtime_game_service.dart';
+import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/utils/number_utils.dart';
@@ -24,7 +27,14 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TournamentService _tournamentService = TournamentService();
+  final TournamentMatchService _tournamentMatchService = TournamentMatchService();
   final ScreenshotController _screenshotController = ScreenshotController();
+
+  bool get _isOnlineTournament {
+    final settings =
+        widget.tournament['settings'] as Map<String, dynamic>? ?? {};
+    return settings['isOnline'] == true;
+  }
 
   @override
   void initState() {
@@ -214,8 +224,8 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
     for (final match in completedMatches) {
       final player1Name = match['player1Name'] ?? match['player1'];
       final player2Name = match['player2Name'] ?? match['player2'];
-      final winnerScore = NumberUtils.safeParseInt(match['winnerScore']) ?? 0;
-      final loserScore = NumberUtils.safeParseInt(match['loserScore']) ?? 0;
+      final winnerScore = NumberUtils.safeParseInt(match['winnerScore']);
+      final loserScore = NumberUtils.safeParseInt(match['loserScore']);
 
       final isPlayer1Winner = match['winner'] == match['player1'];
       final player1Score = isPlayer1Winner ? winnerScore : loserScore;
@@ -311,8 +321,8 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
       totalMatches++;
       final isPlayer1 = player1Name == playerName;
 
-      final winnerScore = NumberUtils.safeParseInt(match['winnerScore']) ?? 0;
-      final loserScore = NumberUtils.safeParseInt(match['loserScore']) ?? 0;
+      final winnerScore = NumberUtils.safeParseInt(match['winnerScore']);
+      final loserScore = NumberUtils.safeParseInt(match['loserScore']);
 
       final player1Score =
           (match['winner'] == match['player1']) ? winnerScore : loserScore;
@@ -520,7 +530,8 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
               ],
 
               // Bekleyen maçlar
-              if (pendingMatches.isNotEmpty && canModify) ...[
+              if (pendingMatches.isNotEmpty &&
+                  (canModify || _isOnlineTournament)) ...[
                 StyledCard(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -530,12 +541,16 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                         Row(
                           children: [
                             Icon(
-                              Icons.edit,
+                              _isOnlineTournament
+                                  ? Icons.sports_esports
+                                  : Icons.edit,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Sonuç Gir',
+                              _isOnlineTournament
+                                  ? 'Bekleyen Maclar'
+                                  : 'Sonuç Gir',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleLarge
@@ -658,6 +673,12 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   }
 
   Widget _buildPendingMatchCard(Map<String, dynamic> match) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isParticipant = currentUser != null &&
+        (match['player1'] == currentUser.uid ||
+            match['player2'] == currentUser.uid);
+    final isCreator = widget.tournament['isCreator'] == true;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -693,11 +714,22 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () => _showMatchResultDialog(match),
-              child: const Text('Sonuç Gir'),
-            ),
+            if (_isOnlineTournament) ...[
+              const SizedBox(height: 8),
+              _OnlineMatchActions(
+                match: match,
+                tournament: widget.tournament,
+                tournamentMatchService: _tournamentMatchService,
+                isParticipant: isParticipant,
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              if (isCreator)
+                ElevatedButton(
+                  onPressed: () => _showMatchResultDialog(match),
+                  child: const Text('Sonuç Gir'),
+                ),
+            ],
           ],
         ),
       ),
@@ -924,7 +956,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.orange),
               ),
@@ -986,7 +1018,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.red),
               ),
@@ -1303,7 +1335,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
         .doc(tournamentId)
         .collection('messages')
         .orderBy('timestamp', descending: false);
-    final TextEditingController _messageController = TextEditingController();
+    final TextEditingController messageController = TextEditingController();
     return Column(
       children: [
         Expanded(
@@ -1338,11 +1370,11 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
                             ? Theme.of(context)
                                 .colorScheme
                                 .primary
-                                .withOpacity(0.15)
+                                .withValues(alpha: 0.15)
                             : Theme.of(context)
                                 .colorScheme
-                                .surfaceVariant
-                                .withOpacity(0.7),
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -1388,16 +1420,16 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
             children: [
               Expanded(
                 child: TextField(
-                  controller: _messageController,
+                  controller: messageController,
                   decoration: const InputDecoration(hintText: 'Mesaj yaz...'),
                   onSubmitted: (_) =>
-                      _sendMessage(_messageController, user, tournamentId),
+                      _sendMessage(messageController, user, tournamentId),
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.send),
                 onPressed: () =>
-                    _sendMessage(_messageController, user, tournamentId),
+                    _sendMessage(messageController, user, tournamentId),
               ),
             ],
           ),
@@ -1440,6 +1472,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
 
       controller.clear();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Mesaj gönderilirken hata oluştu: $e')),
       );
@@ -1476,7 +1509,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
         }
       }
     } catch (e) {
-      print('Turnuva mesaj bildirimi gönderilirken hata: $e');
+      debugPrint('Turnuva mesaj bildirimi gönderilirken hata: $e');
     }
   }
 
@@ -1506,7 +1539,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
         'userId': toUserId,
         'title': 'Yeni Turnuva Mesajı',
         'body':
-            '$fromUsername: ${message.length > 50 ? message.substring(0, 50) + '...' : message}',
+            '$fromUsername: ${message.length > 50 ? '${message.substring(0, 50)}...' : message}',
         'type': 'tournament_message',
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
@@ -1523,7 +1556,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
 
       // Local notification kaldırıldı - Cloud Functions tarafından gönderilecek
     } catch (e) {
-      print('Kullanıcıya mesaj bildirimi gönderilirken hata: $e');
+      debugPrint('Kullanıcıya mesaj bildirimi gönderilirken hata: $e');
     }
   }
 
@@ -1812,7 +1845,7 @@ class _AddMatchDialogState extends State<_AddMatchDialog> {
 
                 // Oyuncu 1 seçimi
                 DropdownButtonFormField<String>(
-                  value: _selectedPlayer1,
+                  initialValue: _selectedPlayer1,
                   decoration: const InputDecoration(
                     labelText: 'Oyuncu 1',
                     border: OutlineInputBorder(),
@@ -1832,7 +1865,7 @@ class _AddMatchDialogState extends State<_AddMatchDialog> {
 
                 // Oyuncu 2 seçimi
                 DropdownButtonFormField<String>(
-                  value: _selectedPlayer2,
+                  initialValue: _selectedPlayer2,
                   decoration: const InputDecoration(
                     labelText: 'Oyuncu 2',
                     border: OutlineInputBorder(),
@@ -1962,5 +1995,185 @@ class _AddMatchDialogState extends State<_AddMatchDialog> {
       'bracket': bracket,
       'lastUpdated': FieldValue.serverTimestamp(),
     });
+  }
+}
+
+class _OnlineMatchActions extends StatelessWidget {
+  const _OnlineMatchActions({
+    required this.match,
+    required this.tournament,
+    required this.tournamentMatchService,
+    required this.isParticipant,
+  });
+
+  final Map<String, dynamic> match;
+  final Map<String, dynamic> tournament;
+  final TournamentMatchService tournamentMatchService;
+  final bool isParticipant;
+  static final RealtimeGameService _realtimeGameService = RealtimeGameService();
+
+  @override
+  Widget build(BuildContext context) {
+    final tournamentId = tournament['id'] as String;
+    final matchId = match['id'] as String;
+
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: tournamentMatchService.getMatchProgress(tournamentId, matchId),
+      builder: (context, snapshot) {
+        final progress = snapshot.data;
+        final hasActiveMatch = progress != null && progress['status'] == 'active';
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (progress != null) ...[
+              _MatchScoreIndicator(
+                p1Score: (progress['player1Score'] as num?)?.toInt() ?? 0,
+                p2Score: (progress['player2Score'] as num?)?.toInt() ?? 0,
+                targetScore: (progress['targetScore'] as num?)?.toInt() ?? 5,
+                gamesPlayed:
+                    (progress['games'] as List<dynamic>?)?.length ?? 0,
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (isParticipant)
+              ElevatedButton.icon(
+                onPressed: () => _startOrContinueMatch(context),
+                icon: Icon(hasActiveMatch ? Icons.play_arrow : Icons.sports),
+                label: Text(hasActiveMatch ? 'Devam Et' : 'Oyna'),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _startOrContinueMatch(BuildContext context) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception('Oturum acik degil');
+      }
+
+      final roomId = await tournamentMatchService.startTournamentMatch(
+        tournamentId: tournament['id'] as String,
+        matchId: match['id'] as String,
+        player1Id: match['player1'] as String,
+        player2Id: match['player2'] as String,
+        player1Name:
+            (match['player1Name'] ?? match['player1'] ?? 'Oyuncu 1') as String,
+        player2Name:
+            (match['player2Name'] ?? match['player2'] ?? 'Oyuncu 2') as String,
+      );
+
+      final roomDoc = await FirebaseFirestore.instance
+          .collection('live_games')
+          .doc(roomId)
+          .get();
+      if (!roomDoc.exists) {
+        throw Exception('Oda bulunamadi');
+      }
+      final roomData = roomDoc.data()!;
+      final whiteId = roomData['playerWhiteId'] as String? ?? '';
+      final blackId = roomData['playerBlackId'] as String? ?? '';
+      final myName = currentUser.uid == (match['player1'] as String)
+          ? ((match['player1Name'] ?? 'Oyuncu 1') as String)
+          : ((match['player2Name'] ?? 'Oyuncu 2') as String);
+      if (currentUser.uid != whiteId &&
+          (blackId.isEmpty || blackId == currentUser.uid)) {
+        await _realtimeGameService.joinRoom(
+          roomId: roomId,
+          playerUid: currentUser.uid,
+          playerName: myName,
+        );
+      }
+
+      if (!context.mounted) return;
+      Navigator.pushNamed(
+        context,
+        AppRouter.liveGame,
+        arguments: {'roomId': roomId},
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Oyun baslatilamadi: $e')),
+      );
+    }
+  }
+}
+
+class _MatchScoreIndicator extends StatelessWidget {
+  const _MatchScoreIndicator({
+    required this.p1Score,
+    required this.p2Score,
+    required this.targetScore,
+    required this.gamesPlayed,
+  });
+
+  final int p1Score;
+  final int p2Score;
+  final int targetScore;
+  final int gamesPlayed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: cs.primaryContainer.withValues(alpha: 0.3),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$p1Score',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: p1Score > p2Score ? cs.primary : cs.onSurface,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              '-',
+              style: TextStyle(
+                fontSize: 16,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Text(
+            '$p2Score',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: p2Score > p1Score ? cs.primary : cs.onSurface,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '/ $targetScore',
+            style: TextStyle(
+              fontSize: 12,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '($gamesPlayed oyun)',
+            style: TextStyle(
+              fontSize: 11,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

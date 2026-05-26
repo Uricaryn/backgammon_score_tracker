@@ -106,12 +106,12 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.7),
-              Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+              Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+              Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             ],
           ),
           border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -140,7 +140,7 @@ class _HomeScoreboardCardState extends State<HomeScoreboardCard> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
@@ -292,7 +292,7 @@ class _ScoreboardItem extends StatelessWidget {
             // ✅ Lighter shadow for better performance
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),

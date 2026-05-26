@@ -1,13 +1,13 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
+import 'package:backgammon_score_tracker/core/services/notification_navigation_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -16,6 +16,8 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
+  final NotificationNavigationService _notificationNavigationService =
+      NotificationNavigationService();
 
   bool _isInitialized = false;
 
@@ -23,7 +25,6 @@ class NotificationService {
   static const int _morningReminderId = 1001;
   static const int _afternoonReminderId = 1002;
   static const int _eveningReminderId = 1003;
-  static const int _welcomeNotificationId = 1004;
 
   // Sosyal bildirim saatleri
   static const int _morningHour = 10; // 10:00
@@ -184,16 +185,6 @@ class NotificationService {
     // Update notification tap handling - simplified
   }
 
-  // Launch download URL
-  Future<void> _launchDownloadUrl(String url) async {
-    try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {}
-    } catch (e) {}
-  }
-
   Future<void> showScheduledNotification({
     required String title,
     required String body,
@@ -269,8 +260,9 @@ class NotificationService {
       _handleUpdateNotificationTap(response.payload!);
     }
 
-    // Burada bildirime tıklandığında yapılacak işlemler
-    // Örneğin: Belirli bir sayfaya yönlendirme
+    _notificationNavigationService.handleTap({
+      'payload': response.payload,
+    });
   }
 
   // Sosyal bildirimi Firebase'e kaydet
@@ -315,7 +307,9 @@ class NotificationService {
           },
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Notification tap handling failed: $e');
+    }
   }
 
   // Bildirim kanallarını oluştur
@@ -369,7 +363,7 @@ class NotificationService {
         await androidPlugin.createNotificationChannel(updateChannel);
       } else {}
     } catch (e) {
-      // Hata durumunda sessizce geç
+      debugPrint('Notification channels setup failed: $e');
     }
   }
 
@@ -407,7 +401,7 @@ class NotificationService {
         'Günün sonunda tavla şampiyonluğunu kim kazanacak? Hemen oynamaya başlayın!',
       );
     } catch (e) {
-      print('Sosyal bildirimler ayarlanırken hata: $e');
+      debugPrint('Sosyal bildirimler ayarlanırken hata: $e');
     }
   }
 
@@ -465,7 +459,7 @@ class NotificationService {
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (e) {
-      print('Günlük bildirim zamanlanırken hata: $e');
+      debugPrint('Günlük bildirim zamanlanırken hata: $e');
     }
   }
 
@@ -541,7 +535,9 @@ class NotificationService {
 
       // Son hoşgeldin bildirimi tarihini kaydet
       await _saveLastWelcomeNotificationDate();
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Welcome notification failed: $e');
+    }
   }
 
   // Hoşgeldin bildirimi gösterilebilir mi kontrol et
@@ -570,7 +566,9 @@ class NotificationService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           _lastWelcomeNotificationKey, DateTime.now().toIso8601String());
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Failed to save welcome notification date: $e');
+    }
   }
 
   // Hoşgeldin bildirimi ayarlarını sıfırla (test için)
@@ -578,6 +576,8 @@ class NotificationService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_lastWelcomeNotificationKey);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Failed to reset welcome notification settings: $e');
+    }
   }
 }

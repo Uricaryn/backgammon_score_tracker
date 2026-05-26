@@ -6,6 +6,7 @@ import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_switch.dart';
+import 'package:backgammon_score_tracker/core/services/notification_navigation_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -16,6 +17,8 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen>
     with AutomaticKeepAliveClientMixin {
+  final NotificationNavigationService _notificationNavigationService =
+      NotificationNavigationService();
   @override
   bool get wantKeepAlive => true;
 
@@ -242,7 +245,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                   : Theme.of(context)
                       .colorScheme
                       .primaryContainer
-                      .withOpacity(0.3),
+                      .withValues(alpha: 0.3),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -359,7 +362,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         iconColor = Colors.purple;
         break;
       case NotificationType.general:
-      default:
         iconData = Icons.notifications;
         iconColor = Colors.grey;
         break;
@@ -368,7 +370,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: iconColor.withOpacity(0.1),
+        color: iconColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(
@@ -402,15 +404,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       notificationProvider.markAsRead(notification.id);
     }
 
-    // Bildirim türüne göre yönlendirme
-    switch (notification.type) {
-      case NotificationType.social:
-        // Ana sayfaya git
-        Navigator.pop(context);
-        break;
-      default:
-        break;
-    }
+    final data = notification.data ?? {};
+    _notificationNavigationService.handleTap(data);
   }
 
   void _handleNotificationAction(

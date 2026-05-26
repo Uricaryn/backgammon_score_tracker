@@ -19,10 +19,8 @@ class LogService {
 
   static const String _logFileName = 'app_logs.txt';
   static const int _maxLogFileSize = 5 * 1024 * 1024; // 5MB
-  static const int _maxLogEntries = 1000;
-
   File? _logFile;
-  List<String> _logBuffer = [];
+  final List<String> _logBuffer = [];
   bool _isInitialized = false;
 
   /// Log service'i başlat
@@ -143,7 +141,7 @@ class LogService {
     if (_logBuffer.isEmpty || _logFile == null) return;
 
     try {
-      final logText = _logBuffer.join('\n') + '\n';
+      final logText = '${_logBuffer.join('\n')}\n';
       await _logFile!.writeAsString(logText, mode: FileMode.append);
       _logBuffer.clear();
     } catch (e) {
@@ -244,9 +242,11 @@ class LogService {
       await shareFile.writeAsString(logs);
 
       // Dosyayı paylaş
-      await Share.shareXFiles(
-        [XFile(shareFile.path)],
-        text: 'Backgammon Score Tracker - Uygulama Logları',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(shareFile.path)],
+          text: 'Backgammon Score Tracker - Uygulama Logları',
+        ),
       );
     } catch (e) {
       developer.log('Loglar paylaşılamadı: $e', name: 'LogService');
@@ -275,7 +275,7 @@ class LogService {
       if (await _logFile!.exists()) {
         final size = await _logFile!.length();
         if (size < 1024) {
-          return '${size} B';
+          return '$size B';
         } else if (size < 1024 * 1024) {
           return '${(size / 1024).toStringAsFixed(1)} KB';
         } else {

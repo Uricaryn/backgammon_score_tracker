@@ -31,6 +31,10 @@ class TournamentService {
   static const String participantAccepted = 'accepted';
   static const String participantDeclined = 'declined';
 
+  // Scoring modes
+  static const String scoringModeSimple = 'simple';
+  static const String scoringModeBackgammon = 'backgammon';
+
   /// Yeni turnuva oluştur
   Future<String> createTournament({
     required String name,
@@ -41,6 +45,9 @@ class TournamentService {
     List<String>? selectedPlayers, // Sadece personal için gerekli
     String? description,
     DateTime? startDate,
+    bool isOnline = false,
+    String scoringMode = scoringModeSimple,
+    int targetScore = 5,
   }) async {
     try {
       final currentUser = _auth.currentUser;
@@ -114,6 +121,9 @@ class TournamentService {
         'settings': {
           'allowSpectators': true,
           'showLeaderboard': true,
+          'isOnline': isOnline,
+          'scoringMode': scoringMode,
+          'targetScore': targetScore,
         },
       });
 
@@ -258,11 +268,14 @@ class TournamentService {
           'status': data['status'],
           'maxParticipants': data['maxParticipants'],
           'participantCount': participantCount,
+          'participants': participants,
           'createdBy': data['createdBy'],
           'createdByName': createdByData['username'] ?? 'Bilinmeyen',
           'createdAt': data['createdAt'],
           'startDate': data['startDate'],
           'isCreator': data['createdBy'] == currentUser.uid,
+          'settings': data['settings'],
+          'bracket': data['bracket'],
         });
       }
 
@@ -1205,10 +1218,12 @@ class TournamentService {
         // Kişisel turnuvalar için oyuncu ID'lerini topla
         final playerIds = <String>{};
         for (final match in matches) {
-          if (match['player1'] != null)
+          if (match['player1'] != null) {
             playerIds.add(match['player1'] as String);
-          if (match['player2'] != null)
+          }
+          if (match['player2'] != null) {
             playerIds.add(match['player2'] as String);
+          }
           if (match['winner'] != null) playerIds.add(match['winner'] as String);
         }
 

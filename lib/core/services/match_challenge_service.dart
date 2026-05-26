@@ -69,6 +69,39 @@ class MatchChallengeService {
     }
   }
 
+  /// Canlı oyun odası daveti gönder
+  Future<void> sendLiveGameInvite({
+    required String friendUserId,
+    required String roomId,
+  }) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw Exception(ErrorService.authUserNotFound);
+      }
+
+      final isFriend =
+          await _friendshipService.areFriends(currentUser.uid, friendUserId);
+      if (!isFriend) {
+        throw Exception('Bu kullanıcı arkadaşınız değil');
+      }
+
+      await _sendChallengeNotification(
+        friendUserId,
+        currentUser.uid,
+        'live_game_invite',
+        roomId: roomId,
+      );
+
+      _logService.info('Live game invite sent to: $friendUserId (room: $roomId)',
+          tag: 'MatchChallenge');
+    } catch (e) {
+      _logService.error('Failed to send live game invite',
+          tag: 'MatchChallenge', error: e);
+      rethrow;
+    }
+  }
+
   /// Maç davetini kabul et
   Future<void> acceptChallenge(String challengeId) async {
     try {
@@ -244,7 +277,11 @@ class MatchChallengeService {
 
   /// Challenge bildirimi gönder
   Future<void> _sendChallengeNotification(
-      String toUserId, String fromUserId, String type) async {
+    String toUserId,
+    String fromUserId,
+    String type, {
+    String? roomId,
+  }) async {
     try {
       // Gönderen kullanıcı bilgilerini al
       final fromUserDoc =
@@ -277,6 +314,11 @@ class MatchChallengeService {
           body = '$fromUserName maç davetinizi kabul etti';
           payload = 'challenge_accepted:$fromUserId';
           break;
+        case 'live_game_invite':
+          title = 'Canli Oyun Daveti';
+          body = '$fromUserName sizi canli tavla odasina davet etti';
+          payload = 'live_game_invite:${roomId ?? ''}';
+          break;
         default:
           return;
       }
@@ -295,6 +337,7 @@ class MatchChallengeService {
           'fromUserId': fromUserId,
           'fromUserName': fromUserName,
           'type': type,
+          if (roomId != null) 'roomId': roomId,
         },
       });
 

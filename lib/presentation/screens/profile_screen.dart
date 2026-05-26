@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/providers/theme_provider.dart';
 import 'package:backgammon_score_tracker/core/validation/validation_service.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
@@ -7,13 +10,17 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
-import 'package:backgammon_score_tracker/core/services/log_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/widgets/dice_switch.dart';
-import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
+import 'package:backgammon_score_tracker/core/services/tutorial_service.dart';
 import 'package:backgammon_score_tracker/core/constants/privacy_policy.dart';
 import 'package:backgammon_score_tracker/presentation/screens/admin_update_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
+import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:backgammon_score_tracker/core/services/payment_service.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -26,17 +33,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _firebaseService = FirebaseService();
-  final _guestDataService = GuestDataService();
-  final _logService = LogService();
+  final _premiumService = PremiumService();
+  final _paymentService = PaymentService();
   bool _isLoading = false;
   bool _isAdmin = false;
   bool _isAdminLoading = true; // Admin kontrolü loading state
+  bool _isGuestUser = false;
+  bool _premiumLoading = true;
+  bool _hasPremiumAccess = false;
+  PremiumMembershipInfo? _premiumInfo;
+  StreamSubscription<bool>? _premiumActivatedSub;
 
   @override
   void initState() {
     super.initState();
+    _isGuestUser = _firebaseService.isCurrentUserGuest();
     _checkUsernameAndLoadData();
     _checkAdminAccess();
+    if (!_isGuestUser) {
+      _loadPremiumMembership();
+      _premiumActivatedSub =
+          _premiumService.premiumActivatedStream.listen((active) {
+        if (active && mounted) _loadPremiumMembership();
+      });
+    } else {
+      _premiumLoading = false;
+    }
   }
 
   // Kullanıcı adı kontrolü ve veri yükleme
@@ -177,6 +199,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _premiumActivatedSub?.cancel();
     _usernameController.dispose();
     super.dispose();
   }
@@ -193,6 +216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
+        if (!mounted) return;
         setState(() {
           _usernameController.text = data['username'] ?? '';
         });
@@ -346,6 +370,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed1 != true) return;
 
     // 2. Onay: Geri alınamaz, devam?
+    if (!mounted) return;
     final confirmed2 = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -392,8 +417,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed2 != true) return;
 
     // Gerekirse yeniden kimlik doğrulama
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isAppleUser = currentUser?.providerData
+            .any((provider) => provider.providerId == 'apple.com') ??
+        false;
     final requiresReauth =
-        await _firebaseService.requiresRecentLoginForDelete();
+        isAppleUser || await _firebaseService.requiresRecentLoginForDelete();
     if (requiresReauth) {
       final reauthResult = await _showReauthenticationDialog();
       if (!reauthResult) return;
@@ -431,6 +460,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<bool> _showReauthenticationDialog() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return false;
+    final providerIds =
+        currentUser.providerData.map((provider) => provider.providerId).toSet();
+    final isAppleUser = providerIds.contains('apple.com');
 
     final emailController =
         TextEditingController(text: currentUser.email ?? '');
@@ -458,38 +490,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'E-posta',
-                  border: OutlineInputBorder(),
+              if (isAppleUser) ...[
+                const Text(
+                  'Apple hesabınızla yeniden doğrulama penceresi açılacak.',
+                  textAlign: TextAlign.center,
                 ),
-                keyboardType: TextInputType.emailAddress,
-                enabled: false, // E-posta adresi değiştirilemez
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'E-posta gerekli';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: passwordController,
-                decoration: const InputDecoration(
-                  labelText: 'Şifre',
-                  border: OutlineInputBorder(),
-                  hintText: 'Mevcut şifrenizi girin',
+              ] else ...[
+                TextFormField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'E-posta',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  enabled: false, // E-posta adresi değiştirilemez
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'E-posta gerekli';
+                    }
+                    return null;
+                  },
                 ),
-                obscureText: true,
-                autofocus: true,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Şifre gerekli';
-                  }
-                  return null;
-                },
-              ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(
+                    labelText: 'Şifre',
+                    border: OutlineInputBorder(),
+                    hintText: 'Mevcut şifrenizi girin',
+                  ),
+                  obscureText: true,
+                  autofocus: true,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Şifre gerekli';
+                    }
+                    return null;
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -500,13 +539,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           FilledButton(
             onPressed: () async {
-              if (formKey.currentState!.validate()) {
+              if (isAppleUser || formKey.currentState!.validate()) {
                 try {
-                  final credential = EmailAuthProvider.credential(
+                  await _firebaseService.reauthenticateForAccountDeletion(
                     email: emailController.text.trim(),
                     password: passwordController.text,
                   );
-                  await currentUser.reauthenticateWithCredential(credential);
+                  if (!context.mounted) return;
                   Navigator.pop(context, true);
                 } on FirebaseAuthException catch (e) {
                   if (!context.mounted) return;
@@ -521,6 +560,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       break;
                     case 'invalid-credential':
                       errorMessage = 'Geçersiz kimlik bilgileri.';
+                      break;
+                    case 'credential-already-in-use':
+                      errorMessage = 'Kimlik doğrulama bilgisi zaten kullanımda.';
                       break;
                     case 'too-many-requests':
                       errorMessage =
@@ -555,6 +597,441 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return result ?? false;
   }
 
+  Future<void> _loadPremiumMembership() async {
+    setState(() => _premiumLoading = true);
+    try {
+      final info = await _premiumService.fetchMembershipDetails();
+      final hasAccess = await _premiumService.hasPremiumAccess();
+      if (mounted) {
+        setState(() {
+          _premiumInfo = info;
+          _hasPremiumAccess = hasAccess;
+          _premiumLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Premium membership load error: $e');
+      if (mounted) setState(() => _premiumLoading = false);
+    }
+  }
+
+  Future<void> _openPremiumUpgrade() async {
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PremiumUpgradeScreen(source: 'profile'),
+      ),
+    );
+    if (!_isGuestUser) await _loadPremiumMembership();
+  }
+
+  Future<void> _restorePremiumPurchases() async {
+    setState(() => _isLoading = true);
+    try {
+      await _paymentService.restorePurchases();
+      await _premiumService.refreshPremiumStatus();
+      await _loadPremiumMembership();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Satın alımlar kontrol edildi. Premium aktifse kısa süre içinde yansır.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Geri yükleme başarısız: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  String? _formatPremiumExpiry(DateTime? date) {
+    if (date == null) return null;
+    return DateFormat('dd.MM.yyyy').format(date);
+  }
+
+  Future<void> _openSubscriptionManagementUrl() async {
+    if (kIsWeb) return;
+    final uri = defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS
+        ? Uri.parse('https://apps.apple.com/account/subscriptions')
+        : Uri.parse(
+            'https://play.google.com/store/account/subscriptions',
+          );
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bağlantı açılamadı.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mağaza bağlantısı açılamadı: $e')),
+      );
+    }
+  }
+
+  Future<void> _confirmCancelPremiumRenewal() async {
+    final expiryNote = _formatPremiumExpiry(_premiumInfo?.expiryDate);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Yenilemeyi iptal et'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                expiryNote != null
+                    ? 'Premium özellikleriniz bu hesapta $expiryNote tarihine kadar açık kalır.'
+                    : 'Premium özellikleriniz mevcut üyelik süreniz dolana kadar açık kalır.',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Bundan sonra yeni bir ücret tahsil edilmez; bir sonraki dönem için otomatik yenileme yapılmaz. '
+                'Aboneliğinizi mağaza hesabınızdan da yönetebilirsiniz.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () {
+              _openSubscriptionManagementUrl();
+            },
+            child: const Text('Mağaza'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('İptali onayla'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await _premiumService.setPremiumRenewalPreference(autoRenew: false);
+      await _loadPremiumMembership();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Yenileme iptali kaydedildi. Premium süreniz bitene kadar devam eder.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İşlem başarısız: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _resumePremiumRenewal() async {
+    setState(() => _isLoading = true);
+    try {
+      await _premiumService.setPremiumRenewalPreference(autoRenew: true);
+      await _loadPremiumMembership();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Otomatik yenileme tekrar etkinleştirildi.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İşlem başarısız: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildPremiumMembershipSection() {
+    if (_isGuestUser) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.star_outline,
+            title: 'Premium Üyelik',
+            iconColor: Colors.amber[700]!,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Premium özellikler için kayıtlı bir hesapla giriş yapmanız gerekir.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                Navigator.pushReplacementNamed(context, AppRouter.login);
+              },
+              icon: const Icon(Icons.login),
+              label: const Text('Giriş Yap / Kayıt Ol'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_premiumLoading) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.star,
+            title: 'Premium Üyelik',
+            iconColor: Colors.amber[700]!,
+          ),
+          const SizedBox(height: 16),
+          const Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+
+    final info = _premiumInfo;
+    final isActive = _hasPremiumAccess ||
+        (info != null && info.isPremium && !info.isExpired);
+    final expiryText = _formatPremiumExpiry(info?.expiryDate);
+    final renewalCancelled = info?.renewalCancelled == true;
+    final expiryNote =
+        expiryText != null ? 'Premium $expiryText tarihine kadar devam eder.' : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader(
+          icon: Icons.star,
+          title: 'Premium Üyelik',
+          iconColor: Colors.amber[700]!,
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: (isActive ? Colors.amber : Colors.grey)
+                .withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: (isActive ? Colors.amber : Colors.grey)
+                  .withValues(alpha: 0.35),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isActive ? Icons.verified : Icons.star_border,
+                    color: isActive ? Colors.amber[800] : Colors.grey[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isActive ? 'Premium Aktif' : 'Ücretsiz Plan',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isActive
+                          ? Colors.amber[900]
+                          : Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (isActive && expiryText != null)
+                Text(
+                  'Geçerlilik: $expiryText',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              else if (isActive)
+                Text(
+                  'Sınırsız arkadaş, sosyal turnuva ve reklamsız deneyim.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              else
+                Text(
+                  '3 arkadaş limiti. Sosyal turnuva oluşturma Premium ile açılır.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (!isActive)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _isLoading ? null : _openPremiumUpgrade,
+              icon: const Icon(Icons.upgrade),
+              label: const Text('Premium\'a Yükselt'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.amber[700],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        if (isActive) ...[
+          _premiumFeatureRow(Icons.people, 'Sınırsız arkadaş ekleme'),
+          _premiumFeatureRow(Icons.emoji_events, 'Sosyal turnuva oluşturma'),
+          _premiumFeatureRow(Icons.block, 'Reklamsız deneyim'),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _openPremiumUpgrade,
+              icon: const Icon(Icons.info_outline),
+              label: const Text('Premium Ayrıntıları'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _isLoading
+                  ? null
+                  : (renewalCancelled
+                      ? _resumePremiumRenewal
+                      : _confirmCancelPremiumRenewal),
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    renewalCancelled ? Colors.green[700] : Colors.red[700],
+                foregroundColor: Colors.white,
+              ),
+              icon: Icon(
+                renewalCancelled ? Icons.refresh : Icons.cancel,
+              ),
+              label: Text(
+                renewalCancelled
+                    ? 'Yenilemeyi Aç'
+                    : 'Yenilemeyi İptal Et',
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            renewalCancelled
+                ? 'Yenileme kapalı. ${expiryNote ?? 'Süreniz bitene kadar premium devam eder.'}'
+                : 'Yenileme açık. İptal ederseniz premium süreniz bitene kadar devam eder.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _openSubscriptionManagementUrl,
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Mağazada Abonelikleri Yönet'),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            Icons.restore,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          title: const Text('Satın Alımları Geri Yükle'),
+          subtitle: const Text(
+            'Daha önce satın aldıysanız App Store üzerinden geri yükleyin',
+          ),
+          trailing: _isLoading
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right),
+          onTap: _isLoading ? null : _restorePremiumPurchases,
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            Icons.refresh,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          title: const Text('Durumu Yenile'),
+          subtitle: const Text('Premium bilgisini sunucudan tekrar al'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _isLoading
+              ? null
+              : () async {
+                  setState(() => _isLoading = true);
+                  await _premiumService.refreshPremiumStatus();
+                  await _loadPremiumMembership();
+                  if (mounted) setState(() => _isLoading = false);
+                },
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionHeader({
+    required IconData icon,
+    required String title,
+    required Color iconColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: iconColor, size: 24),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _premiumFeatureRow(IconData icon, String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.amber[800]),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label)),
+        ],
+      ),
+    );
+  }
+
   // Privacy Policy dialog'unu göster
   void _showPrivacyPolicy() {
     showDialog(
@@ -570,7 +1047,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   gradient: LinearGradient(
                     colors: [
                       Theme.of(context).colorScheme.secondary,
-                      Theme.of(context).colorScheme.secondary.withOpacity(0.8),
+                      Theme.of(context).colorScheme.secondary.withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: const BorderRadius.only(
@@ -676,7 +1153,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
@@ -808,37 +1285,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               color: Theme.of(context)
                                   .colorScheme
                                   .outline
-                                  .withOpacity(0.3)),
+                                  .withValues(alpha: 0.3)),
+                          const SizedBox(height: 12),
+
+                          ListTile(
+                            leading: Icon(
+                              Icons.explore_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            title: const Text('Uygulama turu'),
+                            subtitle: const Text(
+                              'Ana sayfadaki özellikleri adım adım gör',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            onTap: () async {
+                              await TutorialService.instance.resetForReplay();
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              Navigator.pushReplacementNamed(
+                                context,
+                                AppRouter.home,
+                                arguments: true,
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 20),
+                          Divider(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withValues(alpha: 0.3),
+                          ),
+                          const SizedBox(height: 20),
+
+                          _buildPremiumMembershipSection(),
+
+                          const SizedBox(height: 20),
+                          Divider(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withValues(alpha: 0.3),
+                          ),
                           const SizedBox(height: 20),
 
                           // Tema Ayarları Bölümü
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.palette,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Tema Ayarları',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ],
+                          _sectionHeader(
+                            icon: Icons.palette,
+                            title: 'Tema Ayarları',
+                            iconColor: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(height: 16),
                           Container(
@@ -893,35 +1392,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: const Text('Açık'),
-                                    value: 'light',
-                                    groupValue: themeProvider.themeMode,
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        themeProvider.setThemeMode(value);
-                                      }
-                                    },
-                                  ),
+                            SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment<String>(
+                                  value: 'light',
+                                  label: Text('Açık'),
                                 ),
-                                Expanded(
-                                  child: RadioListTile<String>(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: const Text('Koyu'),
-                                    value: 'dark',
-                                    groupValue: themeProvider.themeMode,
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        themeProvider.setThemeMode(value);
-                                      }
-                                    },
-                                  ),
+                                ButtonSegment<String>(
+                                  value: 'dark',
+                                  label: Text('Koyu'),
                                 ),
                               ],
+                              selected: {themeProvider.themeMode},
+                              onSelectionChanged: (selection) {
+                                if (selection.isNotEmpty) {
+                                  themeProvider.setThemeMode(selection.first);
+                                }
+                              },
                             ),
                           ],
 
@@ -932,7 +1419,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 color: Theme.of(context)
                                     .colorScheme
                                     .outline
-                                    .withOpacity(0.3)),
+                                    .withValues(alpha: 0.3)),
                             const SizedBox(height: 20),
                             Row(
                               children: [
@@ -968,7 +1455,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.1),
+                                    color: Colors.red.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: const Text(
@@ -1013,7 +1500,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               color: Theme.of(context)
                                   .colorScheme
                                   .outline
-                                  .withOpacity(0.3)),
+                                  .withValues(alpha: 0.3)),
                           const SizedBox(height: 20),
 
                           // Privacy Policy Bölümü
@@ -1025,7 +1512,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .secondary
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
@@ -1072,7 +1559,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               color: Theme.of(context)
                                   .colorScheme
                                   .outline
-                                  .withOpacity(0.3)),
+                                  .withValues(alpha: 0.3)),
                           const SizedBox(height: 20),
 
                           // Hesap Silme Bölümü

@@ -9,17 +9,30 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-  val keystorePropertiesFile = file("key.properties")
+val keystorePropertiesFile = if (rootProject.file("key.properties").exists()) {
+    rootProject.file("key.properties")
+} else {
+    file("key.properties")
+}
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { localProperties.load(it) }
+}
+val flutterVersionCode =
+    localProperties.getProperty("flutter.versionCode")?.toIntOrNull() ?: 1
+val flutterVersionName =
+    localProperties.getProperty("flutter.versionName") ?: "1.0.0"
+
 android {
     namespace = "com.uricaryn.backgammon_score_tracker"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
-    buildToolsVersion = "35.0.0"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -33,10 +46,10 @@ android {
 
     defaultConfig {
         applicationId = "com.uricaryn.backgammon_score_tracker"
-        minSdk = 23
-        targetSdk = 35
-        versionCode = 27
-        versionName = "1.7.0"
+        minSdk = flutter.minSdkVersion
+        targetSdk = 36
+        versionCode = flutterVersionCode
+        versionName = flutterVersionName
     }
 
     signingConfigs {
@@ -66,6 +79,13 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
         }
+    }
+
+    lint {
+        // Work around AGP/Lint + Kotlin API incompatibility during release lint.
+        disable += "NullSafeMutableLiveData"
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 

@@ -9,10 +9,6 @@ class ApiKeys {
     defaultValue: '', // Boş default değer
   );
 
-  // Eski API key'leri reddet
-  static const String _oldHuggingFaceApiKey =
-      'hf_example_key_123456789'; // Eski key'i reddet
-
   // Diğer API key'ler buraya eklenebilir
   static const String openAiApiKey = String.fromEnvironment(
     'OPENAI_API_KEY',

@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:backgammon_score_tracker/core/services/friendship_service.dart';
 import 'package:backgammon_score_tracker/core/services/match_challenge_service.dart';
-import 'package:backgammon_score_tracker/core/utils/number_utils.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
@@ -12,6 +11,7 @@ import 'package:backgammon_score_tracker/presentation/screens/player_match_histo
 import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:backgammon_score_tracker/core/services/realtime_game_service.dart';
 import 'dart:async';
 
 class FriendsScreen extends StatefulWidget {
@@ -26,6 +26,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   late TabController _tabController;
   final FriendshipService _friendshipService = FriendshipService();
   final MatchChallengeService _challengeService = MatchChallengeService();
+  final RealtimeGameService _realtimeGameService = RealtimeGameService();
   final PremiumService _premiumService = PremiumService();
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounceTimer;
@@ -38,11 +39,34 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   bool _isGuestUser = false;
   Set<String> _sentRequests = {}; // Gönderilen arkadaşlık isteklerini takip et
+  Future<bool>? _premiumAccessFuture;
+  StreamSubscription<bool>? _premiumActivatedSub;
 
   @override
   void initState() {
     super.initState();
+    _premiumAccessFuture = _premiumService.hasPremiumAccess();
+    _premiumActivatedSub =
+        _premiumService.premiumActivatedStream.listen((active) {
+      if (active && mounted) {
+        setState(() {
+          _premiumAccessFuture = _premiumService.hasPremiumAccess();
+        });
+      }
+    });
     _initializeScreen();
+  }
+
+  @override
+  void dispose() {
+    _premiumActivatedSub?.cancel();
+    _tabController.dispose();
+    _searchController.dispose();
+    _searchDebounceTimer?.cancel();
+    _searchResultsNotifier.dispose();
+    _isSearchingNotifier.dispose();
+    _isDebouncingNotifier.dispose();
+    super.dispose();
   }
 
   void _initializeScreen() {
@@ -57,23 +81,12 @@ class _FriendsScreenState extends State<FriendsScreen>
     });
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _searchController.dispose();
-    _searchDebounceTimer?.cancel();
-    _searchResultsNotifier.dispose();
-    _isSearchingNotifier.dispose();
-    _isDebouncingNotifier.dispose();
-    super.dispose();
-  }
-
   // Debounced kullanıcı arama
   void _onSearchChanged(String value) {
     // Önceki timer'ı iptal et
     _searchDebounceTimer?.cancel();
 
-    if (value.length < 1) {
+    if (value.isEmpty) {
       // Sadece gerekli durumlarda setState çağır
       if (_searchResultsNotifier.value.isNotEmpty ||
           _sentRequests.isNotEmpty ||
@@ -102,7 +115,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   // Kullanıcı arama
   Future<void> _searchUsers() async {
     final query = _searchController.text.trim();
-    if (query.isEmpty || query.length < 1) {
+    if (query.isEmpty || query.isEmpty) {
       _searchResultsNotifier.value = [];
       _sentRequests.clear(); // Arama temizlenince istekleri de temizle
       return;
@@ -226,14 +239,20 @@ class _FriendsScreenState extends State<FriendsScreen>
             child: const Text('İptal'),
           ),
           FilledButton.icon(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.push(
+              final activated = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => PremiumUpgradeScreen(source: 'friends'),
                 ),
               );
+              if (activated == true && mounted) {
+                setState(() {
+                  _premiumAccessFuture =
+                      _premiumService.hasPremiumAccess();
+                });
+              }
             },
             icon: const Icon(Icons.star, size: 16),
             label: const Text('Premium\'a Yükselt'),
@@ -320,7 +339,7 @@ class _FriendsScreenState extends State<FriendsScreen>
     }
 
     return FutureBuilder<bool>(
-      future: _premiumService.hasPremiumAccess(),
+      future: _premiumAccessFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -329,8 +348,6 @@ class _FriendsScreenState extends State<FriendsScreen>
             ),
           );
         }
-
-        final hasPremium = snapshot.data ?? false;
 
         return Scaffold(
           appBar: AppBar(
@@ -341,7 +358,6 @@ class _FriendsScreenState extends State<FriendsScreen>
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     // Tab genişliklerini hesapla ve scrollable olup olmayacağını belirle
-                    final screenWidth = MediaQuery.of(context).size.width;
                     final availableWidth = constraints.maxWidth;
 
                     // Tab metinlerinin tahmini genişlikleri
@@ -572,6 +588,9 @@ class _FriendsScreenState extends State<FriendsScreen>
                   ),
                 );
                 break;
+              case 'invite_live_game':
+                await _inviteToLiveGame(friend);
+                break;
               case 'remove_friend':
                 _showRemoveFriendDialog(friend);
                 break;
@@ -591,6 +610,14 @@ class _FriendsScreenState extends State<FriendsScreen>
               child: ListTile(
                 leading: Icon(Icons.sports_esports),
                 title: Text('Maçlarını Görüntüle'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'invite_live_game',
+              child: ListTile(
+                leading: Icon(Icons.videogame_asset),
+                title: Text('Canli Oyun Daveti Gonder'),
                 contentPadding: EdgeInsets.zero,
               ),
             ),
@@ -727,7 +754,7 @@ class _FriendsScreenState extends State<FriendsScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -1015,7 +1042,7 @@ class _FriendsScreenState extends State<FriendsScreen>
     final isDebouncing = _isDebouncingNotifier.value;
 
     return searchResults.isEmpty &&
-            _searchController.text.length >= 1 &&
+            _searchController.text.isNotEmpty &&
             !isSearching &&
             !isDebouncing
         ? Center(
@@ -1098,9 +1125,6 @@ class _FriendsScreenState extends State<FriendsScreen>
   Widget _buildSearchResultCard(Map<String, dynamic> user) {
     final userId = user['id'] as String;
     final friendshipStatus = user['friendshipStatus'] as String? ?? 'none';
-    final isRequestSent =
-        _sentRequests.contains(userId) || friendshipStatus == 'request_sent';
-
     return StyledCard(
       child: ListTile(
         leading: CircleAvatar(
@@ -1454,7 +1478,7 @@ class _FriendsScreenState extends State<FriendsScreen>
         }
       }
     } catch (e) {
-      print('Turnuva aktiviteleri yüklenirken hata: $e');
+      debugPrint('Turnuva aktiviteleri yüklenirken hata: $e');
     }
 
     // Zamana göre sırala (en yeni ilk)
@@ -1854,6 +1878,49 @@ class _FriendsScreenState extends State<FriendsScreen>
           ),
         );
       }
+    }
+  }
+
+  Future<void> _inviteToLiveGame(Map<String, dynamic> friend) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception(ErrorService.authUserNotFound);
+      }
+
+      final roomId = await _realtimeGameService.createRoom(
+        creatorUid: currentUser.uid,
+        creatorName: currentUser.displayName ?? currentUser.email ?? 'Oyuncu 1',
+      );
+
+      await _challengeService.sendLiveGameInvite(
+        friendUserId: friend['userId'] as String,
+        roomId: roomId,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${friend['username']} kullanicisina canli oyun daveti gonderildi',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pushNamed(
+        context,
+        AppRouter.liveGame,
+        arguments: {'roomId': roomId},
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Canli oyun daveti gonderilemedi: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }

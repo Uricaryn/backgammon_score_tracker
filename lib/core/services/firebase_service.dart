@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_messaging_service.dart';
@@ -17,6 +22,84 @@ class FirebaseService {
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final GuestDataService _guestDataService = GuestDataService();
   final LogService _logService = LogService();
+
+  String _generateNonce([int length = 32]) {
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List.generate(
+      length,
+      (_) => charset[random.nextInt(charset.length)],
+    ).join();
+  }
+
+  String _sha256ofString(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  String? _composeAppleDisplayName(AuthorizationCredentialAppleID credential) {
+    final parts = <String>[
+      if ((credential.givenName ?? '').trim().isNotEmpty)
+        credential.givenName!.trim(),
+      if ((credential.familyName ?? '').trim().isNotEmpty)
+        credential.familyName!.trim(),
+    ];
+    if (parts.isEmpty) return null;
+    return parts.join(' ');
+  }
+
+  String _mapAppleAuthError(SignInWithAppleAuthorizationException e) {
+    if (e.code == AuthorizationErrorCode.canceled) {
+      return 'Apple ile giriş iptal edildi.';
+    }
+    if (e.code == AuthorizationErrorCode.notHandled) {
+      return 'Apple giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.';
+    }
+    if (e.code == AuthorizationErrorCode.invalidResponse) {
+      return 'Apple kimlik doğrulama yanıtı geçersiz.';
+    }
+    if (e.code == AuthorizationErrorCode.notInteractive) {
+      return 'Apple giriş bu cihazda şu an etkileşimli olarak kullanılamıyor.';
+    }
+    return 'Apple ile giriş başarısız oldu. iPhone Ayarlar > Apple Hesabı bölümünde oturum açık olduğundan ve uygulamada "Sign In with Apple" yetkisinin etkin olduğundan emin olun.';
+  }
+
+  void _logFirebaseRuntimeContext(String flow) {
+    try {
+      final options = _auth.app.options;
+      debugPrint(
+        'Firebase context [$flow] projectId=${options.projectId}, appId=${options.appId}, iosBundleId=${options.iosBundleId}',
+      );
+      _logService.info(
+        'Firebase context [$flow] projectId=${options.projectId}, appId=${options.appId}, iosBundleId=${options.iosBundleId}',
+        tag: 'Auth',
+      );
+    } catch (e) {
+      debugPrint('Firebase context okunamadi [$flow]: $e');
+      _logService.warning(
+        'Firebase context okunamadi [$flow]: $e',
+        tag: 'Auth',
+      );
+    }
+  }
+
+  Future<void> sendEmailVerification() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception(ErrorService.authFailed);
+    }
+    if (user.emailVerified) return;
+    await user.sendEmailVerification();
+  }
+
+  Future<bool> refreshAndCheckEmailVerified() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    await user.reload();
+    return _auth.currentUser?.emailVerified ?? false;
+  }
 
   // Kullanıcı işlemleri
   Future<UserCredential> signIn(String email, String password) async {
@@ -100,8 +183,8 @@ class FirebaseService {
           'socialNotifications': true,
         });
 
-        // Bildirim servislerini başlat
-        await _initializeNotificationServices();
+        // Kayıt/giriş akışını bloklamamak için bildirim kurulumunu arka planda yap
+        _initializeNotificationServices();
       }
     } catch (e) {
       throw Exception(ErrorService.firestorePermissionDenied);
@@ -426,7 +509,6 @@ class FirebaseService {
         final data = doc.data();
         final player1Score = data['player1Score'] as int;
         final player2Score = data['player2Score'] as int;
-        final player1 = data['player1'] as String;
         final player2 = data['player2'] as String;
 
         // Kazanma sayısını hesapla
@@ -665,9 +747,102 @@ class FirebaseService {
       });
       await _initializeNotificationServices();
       return userCredential;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Google sign up FirebaseAuthException: ${e.code} - ${e.message}');
+      _logService.error(
+        'Google sign up FirebaseAuthException: ${e.code} - ${e.message}',
+        tag: 'Auth',
+        error: e,
+      );
+      throw Exception(
+          'Google kayit hatasi: ${e.code}${e.message != null ? ' - ${e.message}' : ''}');
     } catch (e) {
-      _logService.error('Google sign up failed: \\${e}', tag: 'Auth', error: e);
-      throw Exception('Google sign up failed: \\${e.toString()}');
+      debugPrint('Google sign up failed (generic): $e');
+      _logService.error('Google sign up failed: $e', tag: 'Auth', error: e);
+      throw Exception('Google sign up failed: ${e.toString()}');
+    }
+  }
+
+  Future<UserCredential?> signUpWithApple() async {
+    try {
+      _logFirebaseRuntimeContext('signUpWithApple');
+      if (!await SignInWithApple.isAvailable()) {
+        throw Exception(
+            'Bu cihazda Apple ile giriş kullanılamıyor. Apple hesabı ile giriş yaptığınızdan emin olun.');
+      }
+
+      _logService.info('Apple Sign-Up başlatıldı', tag: 'Auth');
+      final rawNonce = _generateNonce();
+      final nonce = _sha256ofString(rawNonce);
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: nonce,
+      );
+
+      if (appleCredential.identityToken == null) {
+        throw Exception('Apple kimlik doğrulaması başarısız.');
+      }
+
+      final credential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        rawNonce: rawNonce,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user == null) {
+        throw Exception('Apple hesabı ile kayıt başarısız.');
+      }
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        await _auth.signOut();
+        throw Exception(
+            'Bu Apple hesabı ile zaten kayıt yapılmış. Lütfen giriş yapın.');
+      }
+
+      final appleDisplayName = _composeAppleDisplayName(appleCredential);
+
+      await _firestore.collection('users').doc(user.uid).set({
+        'email': user.email,
+        'displayName': user.displayName ?? appleDisplayName,
+        'photoURL': user.photoURL,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastLogin': FieldValue.serverTimestamp(),
+        'isEmailVerified': user.emailVerified,
+        'isGuest': false,
+        'themeMode': 'system',
+        'notificationEnabled': true,
+        'newGameNotifications': false,
+        'statisticsNotifications': false,
+        'reminderNotifications': false,
+        'socialNotifications': true,
+      });
+
+      await _initializeNotificationServices();
+      return userCredential;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Apple sign up FirebaseAuthException: ${e.code} - ${e.message}');
+      _logService.error(
+        'Apple sign up FirebaseAuthException: ${e.code} - ${e.message}',
+        tag: 'Auth',
+        error: e,
+      );
+      throw Exception(
+          'Apple kayit hatasi: ${e.code}${e.message != null ? ' - ${e.message}' : ''}');
+    } on SignInWithAppleAuthorizationException catch (e) {
+      debugPrint('Apple sign up authorization failed: ${e.code} - ${e.message}');
+      _logService.error('Apple sign up authorization failed: $e',
+          tag: 'Auth', error: e);
+      throw Exception(_mapAppleAuthError(e));
+    } catch (e) {
+      debugPrint('Apple sign up failed (generic): $e');
+      _logService.error('Apple sign up failed: $e', tag: 'Auth', error: e);
+      throw Exception('Apple sign up failed: ${e.toString()}');
     }
   }
 
@@ -713,7 +888,7 @@ class FirebaseService {
       _logService.info(
           'Google sign in successful: \\${userCredential.user?.uid}',
           tag: 'Auth');
-      _logService.info('wasAnonymous değeri: \\${wasAnonymous}', tag: 'Auth');
+      _logService.info('wasAnonymous değeri: \\$wasAnonymous', tag: 'Auth');
 
       // Firestore'da kullanıcı dokümanı var mı kontrol et
       final userDoc = await _firestore
@@ -743,29 +918,105 @@ class FirebaseService {
       await _showWelcomeNotification(userCredential.user!);
 
       return userCredential;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Google sign in FirebaseAuthException: ${e.code} - ${e.message}');
+      _logService.error(
+        'Google sign in FirebaseAuthException: ${e.code} - ${e.message}',
+        tag: 'Auth',
+        error: e,
+      );
+      throw Exception(
+          'Google giris hatasi: ${e.code}${e.message != null ? ' - ${e.message}' : ''}');
     } catch (e) {
-      _logService.error('Google sign in failed: \\${e}', tag: 'Auth', error: e);
-      throw Exception('Google authentication failed: \\${e.toString()}');
+      debugPrint('Google sign in failed (generic): $e');
+      _logService.error('Google sign in failed: $e', tag: 'Auth', error: e);
+      throw Exception('Google authentication failed: ${e.toString()}');
     }
   }
 
-  // Misafir verileri varsa Firebase'e aktar
-  Future<void> _migrateGuestDataIfExists() async {
+  Future<UserCredential?> signInWithApple() async {
     try {
-      final hasGuestData = await _guestDataService.hasGuestData();
-      final isAlreadyMigrated = await _guestDataService.isGuestDataMigrated();
-
-      if (hasGuestData && !isAlreadyMigrated) {
-        _logService.info('Misafir veriler bulundu, Firebase\'e aktarılıyor...',
-            tag: 'Auth');
-        await _guestDataService.migrateGuestDataToFirebase();
-        _logService.info('Misafir veriler başarıyla Firebase\'e aktarıldı',
-            tag: 'Auth');
+      _logFirebaseRuntimeContext('signInWithApple');
+      if (!await SignInWithApple.isAvailable()) {
+        throw Exception(
+            'Bu cihazda Apple ile giriş kullanılamıyor. Apple hesabı ile giriş yaptığınızdan emin olun.');
       }
-    } catch (e) {
-      _logService.error('Misafir veriler aktarılamadı: $e',
+
+      _logService.info('Apple Sign-In başlatıldı', tag: 'Auth');
+      final rawNonce = _generateNonce();
+      final nonce = _sha256ofString(rawNonce);
+
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: nonce,
+      );
+
+      if (appleCredential.identityToken == null) {
+        throw Exception('Apple kimlik doğrulaması başarısız.');
+      }
+
+      final credential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        rawNonce: rawNonce,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      final currentUser = _auth.currentUser;
+      UserCredential userCredential;
+      bool wasAnonymous = false;
+
+      if (currentUser != null && currentUser.isAnonymous) {
+        wasAnonymous = true;
+        userCredential = await currentUser.linkWithCredential(credential);
+      } else {
+        userCredential = await _auth.signInWithCredential(credential);
+      }
+
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+      if (!userDoc.exists) {
+        await _auth.signOut();
+        throw Exception(
+            'Bu Apple hesabı ile daha önce kayıt yapılmamış. Lütfen önce kayıt olun.');
+      }
+
+      if (wasAnonymous) {
+        await _migrateAnonymousDataToFirebase();
+      }
+
+      final appleDisplayName = _composeAppleDisplayName(appleCredential);
+      if (appleDisplayName != null && userDoc.exists) {
+        final existingDisplayName = userDoc.data()?['displayName'] as String?;
+        if (existingDisplayName == null || existingDisplayName.trim().isEmpty) {
+          await userDoc.reference.update({'displayName': appleDisplayName});
+        }
+      }
+
+      await _showWelcomeNotification(userCredential.user!);
+      return userCredential;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Apple sign in FirebaseAuthException: ${e.code} - ${e.message}');
+      _logService.error(
+        'Apple sign in FirebaseAuthException: ${e.code} - ${e.message}',
+        tag: 'Auth',
+        error: e,
+      );
+      throw Exception(
+          'Apple giris hatasi: ${e.code}${e.message != null ? ' - ${e.message}' : ''}');
+    } on SignInWithAppleAuthorizationException catch (e) {
+      debugPrint('Apple sign in authorization failed: ${e.code} - ${e.message}');
+      _logService.error('Apple sign in authorization failed: $e',
           tag: 'Auth', error: e);
-      // Misafir veriler aktarılamasa bile uygulama çalışmaya devam etsin
+      throw Exception(_mapAppleAuthError(e));
+    } catch (e) {
+      debugPrint('Apple sign in failed (generic): $e');
+      _logService.error('Apple sign in failed: $e', tag: 'Auth', error: e);
+      throw Exception('Apple authentication failed: ${e.toString()}');
     }
   }
 
@@ -966,6 +1217,55 @@ class FirebaseService {
           tag: 'Auth', error: e);
       return true; // Hata durumunda güvenlik için true döndür
     }
+  }
+
+  Future<void> reauthenticateForAccountDeletion({
+    String? email,
+    String? password,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('Kullanıcı oturumu bulunamadı');
+    }
+
+    final providers = user.providerData.map((e) => e.providerId).toSet();
+    if (providers.contains('apple.com')) {
+      final rawNonce = _generateNonce();
+      final nonce = _sha256ofString(rawNonce);
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email],
+        nonce: nonce,
+      );
+      if (appleCredential.identityToken == null) {
+        throw Exception('Apple kimlik doğrulaması başarısız.');
+      }
+      final credential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        rawNonce: rawNonce,
+        accessToken: appleCredential.authorizationCode,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await _auth
+          .revokeTokenWithAuthorizationCode(appleCredential.authorizationCode);
+      return;
+    }
+
+    if (providers.contains('password')) {
+      final normalizedEmail = (email ?? user.email ?? '').trim();
+      if (normalizedEmail.isEmpty || (password ?? '').isEmpty) {
+        throw Exception('E-posta ve şifre gerekli.');
+      }
+      final credential = EmailAuthProvider.credential(
+        email: normalizedEmail,
+        password: password!,
+      );
+      await user.reauthenticateWithCredential(credential);
+      return;
+    }
+
+    throw Exception(
+      'Bu hesap türü için yeniden kimlik doğrulama desteklenmiyor. Lütfen yeniden giriş yapıp tekrar deneyin.',
+    );
   }
 
   // Misafir kullanıcı hesabını sil
