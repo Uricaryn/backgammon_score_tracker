@@ -431,27 +431,25 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(24),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withValues(alpha: 0.1),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: Icon(
-                                            Icons.analytics,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.analytics,
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primary,
@@ -517,7 +515,6 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                             ),
                           ),
                         ),
-                      ),
                       const SizedBox(height: 16),
                       // Match History
                       Card(
@@ -552,27 +549,25 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(24),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withValues(alpha: 0.1),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: Icon(
-                                            Icons.history,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.history,
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primary,
@@ -605,16 +600,17 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                                         ),
                                       )
                                     else
-                                      ListView.separated(
-                                        shrinkWrap: true,
-                                        physics:
-                                            const NeverScrollableScrollPhysics(),
-                                        itemCount: matchHistory.length,
-                                        separatorBuilder: (context, index) =>
-                                            const SizedBox(height: 8),
-                                        itemBuilder: (context, index) =>
+                                      Column(
+                                        children: [
+                                          for (var i = 0;
+                                              i < matchHistory.length;
+                                              i++) ...[
+                                            if (i > 0) const SizedBox(height: 8),
                                             _buildMatchHistoryItem(
-                                                matchHistory[index]),
+                                              matchHistory[i],
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                   ],
                                 ),
@@ -622,7 +618,6 @@ class _PlayerMatchHistoryScreenState extends State<PlayerMatchHistoryScreen> {
                             ),
                           ),
                         ),
-                      ),
                     ],
                   );
                 },

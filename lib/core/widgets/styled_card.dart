@@ -13,7 +13,7 @@ class StyledCard extends StatelessWidget {
     required this.child,
     this.padding,
     this.borderRadius = 24.0,
-    this.useBackdropFilter = true,
+    this.useBackdropFilter = false,
   });
 
   @override

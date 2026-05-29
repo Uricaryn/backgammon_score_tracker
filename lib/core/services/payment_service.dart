@@ -6,6 +6,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:backgammon_score_tracker/core/services/cloud_functions_safe_service.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 
+/// Purchase sheet / StoreKit lifecycle signals for UI (not product catalog).
+enum PurchaseUiEvent {
+  pending,
+  canceled,
+  failed,
+  completed,
+}
+
 class PaymentService {
   static const String _monthlyPremiumId = 'premium_monthly';
   // static const String _yearlyPremiumId = 'premium_yearly'; // Geçici olarak devre dışı
@@ -39,23 +47,23 @@ class PaymentService {
 
   String? get lastLoadError => _lastLoadError;
   bool get hasProducts => _products.isNotEmpty;
-  bool _usingLocalTestProducts = false;
   bool _productsUnavailableFromStore = false;
-
-  /// Simulator/debug'da sahte ProductDetails ile mağaza sorgusu yapılmaz.
-  bool get usingLocalTestProducts => _usingLocalTestProducts;
+  bool _lastStoreKitNoResponse = false;
 
   /// Premium planları yüklenemediğinde gösterilecek kullanıcı metni.
   String get userProductsLoadMessage {
-    if (kDebugMode) {
-      return _friendlyLoadError;
+    if (_lastStoreKitNoResponse && kDebugMode) {
+      return '$_friendlyLoadError\n\n'
+          'Simülatörde StoreKit yanıt vermedi. Şunları deneyin:\n'
+          '• Uygulamayı Xcode’dan çalıştırın (ios/Runner.xcworkspace → Run)\n'
+          '• Scheme → Run → Options → StoreKit Configuration: Products.storekit';
     }
     if (_productsUnavailableFromStore) {
       return '$_friendlyLoadError\n\n'
           'TestFlight veya Mac üzerinde test ediyorsanız: App Store, '
           'premium_monthly ürünü onaylanana kadar listeyi göstermeyebilir. '
           'Onay sonrası Mac Ayarlar → App Store → Sandbox hesabı ile giriş yapıp '
-          'yeniden deneyin. Geliştirme testi için iOS Simulator kullanın.';
+          'yeniden deneyin. Geliştirme testi için iOS Simulator + Products.storekit kullanın.';
     }
     return _friendlyLoadError;
   }
@@ -65,10 +73,14 @@ class PaymentService {
       StreamController<List<ProductDetails>>.broadcast();
   final StreamController<bool> _isAvailableController =
       StreamController<bool>.broadcast();
+  final StreamController<PurchaseUiEvent> _purchaseUiEventController =
+      StreamController<PurchaseUiEvent>.broadcast();
 
   // Stream'ler
   Stream<List<ProductDetails>> get productsStream => _productsController.stream;
   Stream<bool> get isAvailableStream => _isAvailableController.stream;
+  Stream<PurchaseUiEvent> get purchaseUiEvents =>
+      _purchaseUiEventController.stream;
 
   // Getter'lar
   List<ProductDetails> get products => _products;
@@ -104,6 +116,12 @@ class PaymentService {
     _inAppPurchase.purchaseStream.listen(_handlePurchaseUpdates);
   }
 
+  /// Simülatörde StoreKit Configuration dosyasının hazır olması için kısa bekleme.
+  Future<void> _prepareStoreKitOnIos() async {
+    if (!_isIos) return;
+    await Future<void>.delayed(const Duration(milliseconds: 2500));
+  }
+
   // Servisi başlat
   Future<void> initialize() async {
     if (_paymentSystemDisabled) {
@@ -117,35 +135,21 @@ class PaymentService {
     _attachPurchaseListener();
 
     try {
-      if (kDebugMode) {
-        debugPrint('Debug modunda premium ürünleri yükleniyor...');
-        await _loadProductsForDebug();
-        return;
-      }
-
       await reloadProducts();
     } catch (e) {
       debugPrint('Payment service başlatılırken hata: $e');
       _lastLoadError = _friendlyLoadError;
-      if (kDebugMode) {
-        _addTestProducts();
-      } else {
-        _publishProducts([]);
-      }
+      _publishProducts([]);
     }
   }
 
   Future<void> reloadProducts() async {
     _lastLoadError = null;
     _productsUnavailableFromStore = false;
+    _lastStoreKitNoResponse = false;
 
     if (_paymentSystemDisabled) {
       _publishProducts([]);
-      return;
-    }
-
-    if (kDebugMode) {
-      await _loadProductsForDebug();
       return;
     }
 
@@ -161,11 +165,13 @@ class PaymentService {
         return;
       }
 
-      const attempts = 2;
+      await _prepareStoreKitOnIos();
+
+      const attempts = 3;
       for (var i = 0; i < attempts; i++) {
         if (i > 0) {
           debugPrint('Premium ürün sorgusu yeniden deneniyor (${i + 1}/$attempts)...');
-          await Future<void>.delayed(const Duration(seconds: 2));
+          await Future<void>.delayed(Duration(seconds: 2 + i));
         }
         await _loadProducts().timeout(
           const Duration(seconds: 25),
@@ -190,60 +196,10 @@ class PaymentService {
       debugPrint('Ürün yenileme hatası: $e');
       _productsUnavailableFromStore = true;
       _lastLoadError = _friendlyLoadError;
-      _publishProducts([]);
-    }
-  }
-
-  /// Debug: önce StoreKit Configuration / sandbox ürünlerini dene, olmazsa yerel test.
-  Future<void> _loadProductsForDebug() async {
-    _usingLocalTestProducts = false;
-    try {
-      final available = await _inAppPurchase.isAvailable();
-      if (available) {
-        await _loadProducts();
-        if (_products.isNotEmpty) {
-          debugPrint(
-              'Debug: mağaza ürünleri yüklendi (${_products.length} adet).');
-          return;
-        }
+      if (_products.isEmpty) {
+        _publishProducts([]);
       }
-    } catch (e) {
-      debugPrint('Debug mağaza sorgusu başarısız, yerel test ürünleri: $e');
     }
-    _addTestProducts();
-  }
-
-  // Debug modunda test ürünleri ekle
-  void _addTestProducts() {
-    _usingLocalTestProducts = true;
-    _products = [
-      ProductDetails(
-        id: _monthlyPremiumId,
-        title: 'Aylık Premium (Test)',
-        description: '1 ay premium erişim',
-        price: '₺19.99',
-        rawPrice: 19.99,
-        currencyCode: 'TRY',
-      ),
-      // ProductDetails(
-      //   id: _yearlyPremiumId,
-      //   title: 'Yıllık Premium (Test)',
-      //   description: '12 ay premium erişim',
-      //   price: '₺149.99',
-      //   rawPrice: 149.99,
-      //   currencyCode: 'TRY',
-      // ),
-    ];
-    _lastLoadError = null;
-    _publishProducts(_products);
-    _isAvailableController.add(true);
-
-    debugPrint('Test ürünleri yüklendi.');
-  }
-
-  // Test ürünlerini zorla ekle (public metod)
-  void addTestProducts() {
-    _addTestProducts();
   }
 
   /// Mağaza ve ürün durumunu kontrol eder (iOS + Android).
@@ -256,18 +212,6 @@ class PaymentService {
         'available': false,
         'reason': _friendlyLoadError,
         'debugReason': 'Payment system disabled',
-      };
-    }
-
-    // Debug + yüklü ürün: gerçek App Store'a tekrar sorma (simülatörde storekit_no_response).
-    if (kDebugMode && _products.isNotEmpty) {
-      return {
-        'available': true,
-        'products_count': _products.length,
-        'products': _products.map((p) => p.id).toList(),
-        'debugReason': _usingLocalTestProducts
-            ? 'debug_local_test_products'
-            : 'debug_cached_store_products',
       };
     }
 
@@ -327,7 +271,18 @@ class PaymentService {
   // Ürünleri yükle
   Future<void> _loadProducts() async {
     final ProductDetailsResponse response =
-        await _inAppPurchase.queryProductDetails(_productIds);
+        await _inAppPurchase.queryProductDetails(_productIds).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => ProductDetailsResponse(
+        productDetails: [],
+        notFoundIDs: _productIds.toList(),
+        error: IAPError(
+          source: _isIos ? 'app_store' : 'play_store',
+          code: 'storekit_no_response',
+          message: 'Product query timed out',
+        ),
+      ),
+    );
 
     if (response.notFoundIDs.isNotEmpty) {
       debugPrint('Bulunamayan ürünler: ${response.notFoundIDs}');
@@ -336,6 +291,9 @@ class PaymentService {
 
     if (response.error != null) {
       debugPrint('Ürün yükleme hatası: ${response.error}');
+      if (response.error!.code == 'storekit_no_response') {
+        _lastStoreKitNoResponse = true;
+      }
       _lastLoadError = _friendlyLoadError;
       _publishProducts([]);
       return;
@@ -352,38 +310,54 @@ class PaymentService {
   /// Geriye dönük uyumluluk.
   Future<Map<String, dynamic>> checkPlayStoreStatus() => checkStoreStatus();
 
+  void _emitPurchaseUiEvent(PurchaseUiEvent event) {
+    if (!_purchaseUiEventController.isClosed) {
+      _purchaseUiEventController.add(event);
+    }
+  }
+
+  /// Ensures [productId] is in [_products], reloading from the store once if needed.
+  Future<ProductDetails?> _resolveProduct(String productId) async {
+    try {
+      return _products.firstWhere((p) => p.id == productId);
+    } catch (_) {
+      await reloadProducts();
+      try {
+        return _products.firstWhere((p) => p.id == productId);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
   // Satın alma işlemini başlat
   Future<bool> purchaseProduct(String productId) async {
-    // TEMPORARY: Payment system disabled
     if (_paymentSystemDisabled) {
       debugPrint('Payment system temporarily disabled - purchase ignored');
       return false;
     }
 
     try {
-      // Debug modunda test satın alma
-      if (kDebugMode) {
-        debugPrint('Debug modunda test satın alma: $productId');
-        return await _handleTestPurchase(productId);
+      final available = await _inAppPurchase.isAvailable();
+      if (!available) {
+        debugPrint('purchaseProduct: store not available');
+        return false;
       }
 
-      final product = _products.firstWhere(
-        (product) => product.id == productId,
-        orElse: () => throw Exception('Ürün bulunamadı: $productId'),
-      );
+      final product = await _resolveProduct(productId);
+      if (product == null) {
+        debugPrint('purchaseProduct: product not found: $productId');
+        return false;
+      }
 
-      final PurchaseParam purchaseParam = PurchaseParam(
+      final uid = _auth.currentUser?.uid;
+      final purchaseParam = PurchaseParam(
         productDetails: product,
+        applicationUserName: uid,
       );
 
-      bool success = false;
-
-      if (product.id == _monthlyPremiumId) {
-        success =
-            await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-      }
-
-      return success;
+      // Subscriptions and non-consumables use this API on iOS (StoreKit 2).
+      return await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
     } catch (e) {
       debugPrint('Satın alma başlatılırken hata: $e');
       return false;
@@ -413,80 +387,29 @@ class PaymentService {
     }, SetOptions(merge: true));
   }
 
-  // Debug modunda test satın alma işle
-  Future<bool> _handleTestPurchase(String productId) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        debugPrint('Test satın alma: kullanıcı giriş yapmamış');
-        return false;
-      }
-
-      final purchaseId =
-          'test_purchase_${DateTime.now().millisecondsSinceEpoch}';
-
-      // Yerel test ürünleri: Cloud Function / StoreKit gerekmez (simülatör).
-      if (_usingLocalTestProducts) {
-        await _activatePremiumLocally(user.uid, productId, purchaseId);
-        await PremiumService().markPremiumActiveLocally();
-        debugPrint('Test premium aktifleştirildi (yerel debug)');
-        return true;
-      }
-
-      // StoreKit ürünü yüklendiyse sunucu doğrulamasını dene.
-      try {
-        await user.getIdToken(true);
-      } catch (e) {
-        debugPrint('Auth token yenilenemedi: $e');
-      }
-
-      final verifyResult = await _functionsSafe.call(
-        'verifyPremiumPurchase',
-        data: {
-          'purchaseId': purchaseId,
-          'productId': productId,
-          'platform': _purchasePlatform,
-          if (_purchasePlatform == 'android')
-            'purchaseToken':
-                'test_token_${DateTime.now().millisecondsSinceEpoch}',
-        },
-      );
-      if (verifyResult != null &&
-          verifyResult.data is Map &&
-          (verifyResult.data as Map)['success'] == true) {
-        debugPrint('Test premium doğrulandı (sunucu)');
-        return true;
-      }
-
-      await _activatePremiumLocally(user.uid, productId, purchaseId);
-      await PremiumService().markPremiumActiveLocally();
-      debugPrint('Test premium aktifleştirildi (yerel yedek)');
-      return true;
-    } catch (e) {
-      debugPrint('Test premium aktivasyon hatası: $e');
-      return false;
-    }
-  }
-
   // Satın alma güncellemelerini işle
   void _handlePurchaseUpdates(List<PurchaseDetails> purchaseDetailsList) {
     for (final PurchaseDetails purchaseDetails in purchaseDetailsList) {
-      if (purchaseDetails.status == PurchaseStatus.pending) {
-        // Bekleyen satın alma
-        debugPrint('Satın alma bekliyor: ${purchaseDetails.productID}');
-      } else if (purchaseDetails.status == PurchaseStatus.purchased ||
-          purchaseDetails.status == PurchaseStatus.restored) {
-        // Başarılı satın alma
-        _handleSuccessfulPurchase(purchaseDetails);
-      } else if (purchaseDetails.status == PurchaseStatus.error) {
-        // Hata
-        debugPrint('Satın alma hatası: ${purchaseDetails.error}');
-      } else if (purchaseDetails.status == PurchaseStatus.canceled) {
-        // İptal edildi
-        debugPrint('Satın alma iptal edildi: ${purchaseDetails.productID}');
+      switch (purchaseDetails.status) {
+        case PurchaseStatus.pending:
+          debugPrint('Satın alma bekliyor: ${purchaseDetails.productID}');
+          _emitPurchaseUiEvent(PurchaseUiEvent.pending);
+          break;
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          _handleSuccessfulPurchase(purchaseDetails);
+          _emitPurchaseUiEvent(PurchaseUiEvent.completed);
+          break;
+        case PurchaseStatus.error:
+          debugPrint('Satın alma hatası: ${purchaseDetails.error}');
+          _emitPurchaseUiEvent(PurchaseUiEvent.failed);
+          break;
+        case PurchaseStatus.canceled:
+          debugPrint('Satın alma iptal edildi: ${purchaseDetails.productID}');
+          _emitPurchaseUiEvent(PurchaseUiEvent.canceled);
+          break;
       }
 
-      // Satın alma tamamlandıysa kapat
       if (purchaseDetails.pendingCompletePurchase) {
         _inAppPurchase.completePurchase(purchaseDetails);
       }
@@ -551,14 +474,16 @@ class PaymentService {
         debugPrint('Auth token yenilenemedi: $e');
       }
 
+      final receipt = purchaseDetails.verificationData.serverVerificationData;
       final verifyResult = await _functionsSafe.call(
         'verifyPremiumPurchase',
         data: {
           'purchaseId': purchaseId,
           'productId': productId,
           'platform': _purchasePlatform,
-          if (_purchasePlatform == 'android')
-            'purchaseToken': purchaseDetails.verificationData.serverVerificationData,
+          if (_purchasePlatform == 'android') 'purchaseToken': receipt,
+          if (_purchasePlatform == 'ios' && receipt.isNotEmpty)
+            'receiptData': receipt,
         },
       );
       if (verifyResult != null &&
@@ -586,6 +511,7 @@ class PaymentService {
   void dispose() {
     _productsController.close();
     _isAvailableController.close();
+    _purchaseUiEventController.close();
   }
 
   // Premium ürünlerini getir

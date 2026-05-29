@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/board/package_dice_panel.dart';
 
 class GameDicePanel extends StatefulWidget {
   const GameDicePanel({
@@ -59,16 +60,15 @@ class _GameDicePanelState extends State<GameDicePanel>
 
   Future<void> _playRollAnimation(List<int> finalDice) async {
     setState(() => _rolling = true);
-    for (int i = 0; i < 5; i++) {
-      if (!mounted) return;
-      setState(() {
-        _flashDice = List.generate(
-          finalDice.length,
-          (_) => _rng.nextInt(6) + 1,
-        );
-      });
-      await Future.delayed(Duration(milliseconds: 60 + i * 25));
-    }
+    await playDiceRollFlash(
+      finalDice: finalDice,
+      random: _rng,
+      isMounted: () => mounted,
+      onFlash: (flash) {
+        if (!mounted) return;
+        setState(() => _flashDice = flash);
+      },
+    );
     if (!mounted) return;
     setState(() {
       _flashDice = finalDice;
@@ -129,22 +129,12 @@ class _GameDicePanelState extends State<GameDicePanel>
                 );
               },
               child: hasDice || _rolling
-                  ? Wrap(
+                  ? PackageDiceRow(
                       key: ValueKey<String>(
                         'dice-${displayDice.join(",")}-$_rolling',
                       ),
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        for (int i = 0; i < displayDice.length; i++)
-                          Dice3D(
-                            value: displayDice[i],
-                            size: 48,
-                            rolling: _rolling,
-                            delay: Duration(milliseconds: i * 80),
-                          ),
-                      ],
+                      values: displayDice,
+                      rolling: _rolling,
                     )
                   : _StatusMessageRow(
                       key: ValueKey<String>('status-${widget.canRoll}'),
@@ -248,12 +238,14 @@ class Dice3D extends StatelessWidget {
     required this.size,
     this.rolling = false,
     this.delay = Duration.zero,
+    this.tumble3D = false,
   });
 
   final int value;
   final double size;
   final bool rolling;
   final Duration delay;
+  final bool tumble3D;
 
   @override
   Widget build(BuildContext context) {
@@ -299,20 +291,38 @@ class Dice3D extends StatelessWidget {
     );
 
     if (rolling) {
-      return die
-          .animate(
-            onPlay: (c) => c.repeat(),
-          )
+      Widget rollingDie = die
+          .animate(onPlay: (c) => c.repeat())
           .rotate(
             duration: 200.ms,
-            begin: -0.05,
-            end: 0.05,
+            begin: -0.08,
+            end: 0.08,
           )
           .scale(
             duration: 150.ms,
-            begin: const Offset(0.92, 0.92),
-            end: const Offset(1.05, 1.05),
+            begin: const Offset(0.9, 0.9),
+            end: const Offset(1.06, 1.06),
           );
+      if (tumble3D) {
+        rollingDie = rollingDie
+            .animate(onPlay: (c) => c.repeat())
+            .custom(
+              duration: 220.ms,
+              builder: (context, value, child) {
+                final tiltX = sin(value * pi * 2) * 0.35;
+                final tiltY = cos(value * pi * 2) * 0.25;
+                return Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.001)
+                    ..rotateX(tiltX)
+                    ..rotateY(tiltY),
+                  child: child,
+                );
+              },
+            );
+      }
+      return rollingDie;
     }
 
     return die

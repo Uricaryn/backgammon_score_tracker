@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:provider/provider.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/presentation/screens/new_game_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/players_screen.dart';
-import 'package:backgammon_score_tracker/presentation/screens/notifications_screen.dart';
-import 'package:backgammon_score_tracker/presentation/screens/profile_screen.dart';
+import 'package:backgammon_score_tracker/core/providers/notification_provider.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/home/home_app_bar_actions.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/home/home_compact_premium_section.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:backgammon_score_tracker/presentation/screens/profile_screen.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 import 'package:backgammon_score_tracker/core/auth/auth_verification.dart';
 import 'package:backgammon_score_tracker/core/auth/post_auth_navigation.dart';
@@ -15,7 +18,6 @@ import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
 import 'package:backgammon_score_tracker/core/services/update_notification_service.dart';
 import 'package:backgammon_score_tracker/core/services/daily_tip_service.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
-import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/core/services/ad_service.dart';
 import 'package:backgammon_score_tracker/core/services/tutorial_service.dart';
 import 'package:backgammon_score_tracker/core/widgets/banner_ad_widget.dart';
@@ -78,13 +80,11 @@ class _HomeScreenState extends State<HomeScreen>
         });
       }
     });
-    _initializeScreen();
-  }
-
-  void _refreshPremiumAccessFuture() {
-    setState(() {
-      _premiumAccessFuture = _premiumService.hasPremiumAccess();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<NotificationProvider>().attachUnreadBadgeListener();
     });
+    _initializeScreen();
   }
 
   // Geçiş reklamını göster
@@ -569,71 +569,7 @@ class _HomeScreenState extends State<HomeScreen>
       appBar: AppBar(
         title: const Text('Tavla Skor Takip'),
         actions: [
-          if (!_isGuestUser) ...[
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('notifications')
-                  .where('userId', isEqualTo: userId)
-                  .where('isRead', isEqualTo: false)
-                  .orderBy('timestamp', descending: true)
-                  .limit(50)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                int unreadCount = 0;
-                if (snapshot.hasData) {
-                  unreadCount = snapshot.data!.docs.length;
-                }
-
-                return Stack(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.notifications),
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const NotificationsScreen(),
-                        ),
-                      ),
-                    ),
-                    if (unreadCount > 0)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : unreadCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.person),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ProfileScreen(),
-                ),
-              ),
-            ),
-          ],
+          if (!_isGuestUser) const HomeAppBarActions(),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _signOut,
@@ -717,7 +653,9 @@ class _HomeScreenState extends State<HomeScreen>
                         // Premium section
                         if (!_isGuestUser) ...[
                           const SizedBox(height: 16),
-                          _buildCompactPremiumSection(),
+                          HomeCompactPremiumSection(
+                            hasPremiumFuture: _premiumAccessFuture!,
+                          ),
                         ],
 
                         // Banner reklam - en altta
@@ -1294,126 +1232,6 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
       ],
-    );
-  }
-
-  // Kompakt premium bölümü
-  Widget _buildCompactPremiumSection() {
-    return FutureBuilder<bool>(
-      future: _premiumAccessFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
-        }
-
-        final hasPremium = snapshot.data ?? false;
-
-        if (hasPremium) {
-          return const SizedBox.shrink(); // Premium kullanıcılar için gösterme
-        }
-
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final titleColor =
-            isDark ? Colors.amber[700]! : const Color(0xFF7A4A00);
-        final subtitleColor =
-            isDark ? Colors.amber[700]!.withValues(alpha: 0.7) : const Color(0xFF8B5E1A);
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                isDark
-                    ? Colors.amber[700]!.withValues(alpha: 0.05)
-                    : const Color(0xFFFFF1C7),
-                isDark
-                    ? Colors.amber[500]!.withValues(alpha: 0.02)
-                    : const Color(0xFFFFE5A3),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark
-                  ? Colors.amber[700]!.withValues(alpha: 0.2)
-                  : const Color(0xFFE2B44A),
-              width: isDark ? 1 : 1.3,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.0 : 0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.amber[700]!.withValues(alpha: 0.1)
-                      : Colors.white.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.star,
-                  color: titleColor,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Premium\'a Yükselt',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: titleColor,
-                          ),
-                    ),
-                    Text(
-                      'Sınırsız arkadaş + Sosyal turnuvalar',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: subtitleColor,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final activated = await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          PremiumUpgradeScreen(source: 'home'),
-                    ),
-                  );
-                  if (activated == true && mounted) {
-                    _refreshPremiumAccessFuture();
-                  }
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.amber[700],
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  minimumSize: const Size(0, 32),
-                ),
-                child: const Text(
-                  'Yükselt',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

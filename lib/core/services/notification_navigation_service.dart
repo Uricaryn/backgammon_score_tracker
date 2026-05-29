@@ -21,17 +21,28 @@ class NotificationNavigationService {
     String? roomId = (normalized['roomId'] as String?)?.trim();
     roomId ??= _roomIdFromPayload(payload);
 
-    // As requested: social/unknown types should not navigate.
     if (type == 'social') return false;
 
-    if ((type == 'live_game_invite' || type == 'tournament_match_invite') &&
+    if (_isLiveGameNavigation(type, payload) &&
         roomId != null &&
         roomId.isNotEmpty) {
-      await _joinRoomIfPossible(roomId);
+      await _resumeRoomIfPossible(roomId);
       return _navigateToLiveGame(roomId);
     }
 
     return false;
+  }
+
+  bool _isLiveGameNavigation(String? type, String? payload) {
+    if (type == 'live_game_invite' ||
+        type == 'live_game_resume' ||
+        type == 'tournament_match_invite') {
+      return true;
+    }
+    return payload != null &&
+        (payload.startsWith('live_game_invite:') ||
+            payload.startsWith('live_game_resume:') ||
+            payload.startsWith('tournament_match_invite:'));
   }
 
   String? _roomIdFromPayload(String? payload) {
@@ -43,6 +54,7 @@ class NotificationNavigationService {
     final maybeType = parts.first.trim();
     final maybeRoomId = parts.sublist(1).join(':').trim();
     if ((maybeType == 'live_game_invite' ||
+            maybeType == 'live_game_resume' ||
             maybeType == 'tournament_match_invite') &&
         maybeRoomId.isNotEmpty) {
       return maybeRoomId;
@@ -50,18 +62,17 @@ class NotificationNavigationService {
     return null;
   }
 
-  Future<void> _joinRoomIfPossible(String roomId) async {
+  Future<void> _resumeRoomIfPossible(String roomId) async {
     try {
       final user = _auth.currentUser;
       if (user == null) return;
-      await _realtimeGameService.joinRoom(
+      await _realtimeGameService.resumeRoom(
         roomId: roomId,
         playerUid: user.uid,
         playerName: user.displayName ?? user.email ?? 'Oyuncu',
       );
     } catch (e) {
-      // Best effort join: navigation still proceeds to allow retry in UI flow.
-      debugPrint('Notification joinRoom failed: $e');
+      debugPrint('Notification resumeRoom failed: $e');
     }
   }
 

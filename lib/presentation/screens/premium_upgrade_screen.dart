@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_container.dart';
-import 'package:backgammon_score_tracker/core/services/payment_service.dart';
+import 'package:backgammon_score_tracker/core/services/payment_service.dart'
+    show PaymentService, PurchaseUiEvent;
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -33,6 +33,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
   bool _awaitingPurchaseConfirmation = false;
   bool _activationHandled = false;
   StreamSubscription<bool>? _premiumActivatedSub;
+  StreamSubscription<PurchaseUiEvent>? _purchaseUiSub;
 
   @override
   void initState() {
@@ -46,6 +47,26 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
         _onPremiumActivated();
       }
     });
+    _purchaseUiSub = _paymentService.purchaseUiEvents.listen(_onPurchaseUiEvent);
+  }
+
+  void _onPurchaseUiEvent(PurchaseUiEvent event) {
+    if (!mounted) return;
+    switch (event) {
+      case PurchaseUiEvent.pending:
+        break;
+      case PurchaseUiEvent.completed:
+        break;
+      case PurchaseUiEvent.canceled:
+        setState(() => _awaitingPurchaseConfirmation = false);
+        break;
+      case PurchaseUiEvent.failed:
+        setState(() {
+          _awaitingPurchaseConfirmation = false;
+          _errorMessage = PaymentService.friendlyPurchaseError;
+        });
+        break;
+    }
   }
 
   Future<void> _initScreen() async {
@@ -82,6 +103,7 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
   @override
   void dispose() {
     _premiumActivatedSub?.cancel();
+    _purchaseUiSub?.cancel();
     super.dispose();
   }
 
@@ -128,30 +150,24 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
       return;
     }
 
-    try {
-      if (!kDebugMode || !_paymentService.hasProducts) {
-        final status = await _paymentService.checkStoreStatus();
-
-        if (!status['available']) {
-          debugPrint(
-              'Store not available: ${status['debugReason'] ?? status['reason']}');
-          setState(() {
-            _errorMessage = PaymentService.friendlyPurchaseError;
-          });
-          return;
-        }
+    final product = _paymentService.getMonthlyPremium();
+    if (product == null) {
+      await _paymentService.reloadProducts();
+      if (_paymentService.getMonthlyPremium() == null) {
+        setState(() {
+          _errorMessage = _paymentService.userProductsLoadMessage;
+        });
+        return;
       }
+    }
 
+    try {
       setState(() => _awaitingPurchaseConfirmation = true);
 
       final success = await _paymentService.purchaseProduct(productId);
 
       if (success) {
-        // Debug/test: premium hemen yazılır; release: StoreKit stream tamamlanınca kapanır.
-        if (kDebugMode) {
-          await _premiumService.refreshPremiumStatus();
-          if (mounted) _onPremiumActivated();
-        } else if (mounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -163,11 +179,11 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
         }
       } else {
         if (mounted) {
-          setState(() => _awaitingPurchaseConfirmation = false);
+          setState(() {
+            _awaitingPurchaseConfirmation = false;
+            _errorMessage = PaymentService.friendlyPurchaseError;
+          });
         }
-        setState(() {
-          _errorMessage = PaymentService.friendlyPurchaseError;
-        });
       }
     } catch (e) {
       debugPrint('Purchase exception: $e');
@@ -572,16 +588,6 @@ class _PremiumUpgradeScreenState extends State<PremiumUpgradeScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        if (kDebugMode)
-          _buildPlanCard(
-            'Aylık Premium (Test)',
-            '₺29.99/ay',
-            '1 ay premium erişim',
-            Icons.calendar_month,
-            Colors.blue,
-            () => _purchaseProduct('premium_monthly'),
-          ),
-        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(

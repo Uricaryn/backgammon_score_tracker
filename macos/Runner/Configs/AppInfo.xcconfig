@@ -11,4 +11,4 @@ PRODUCT_NAME = backgammon_score_tracker
 PRODUCT_BUNDLE_IDENTIFIER = com.example.backgammonScoreTracker
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2025 Onur Anatca. All rights reserved.

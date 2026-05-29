@@ -9,7 +9,9 @@ import 'package:backgammon_score_tracker/core/validation/validation_service.dart
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 import 'package:backgammon_score_tracker/core/services/guest_data_service.dart';
+import 'package:backgammon_score_tracker/core/services/player_stats_service.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
+import 'package:backgammon_score_tracker/core/constants/layout_constants.dart';
 
 class PlayersScreen extends StatefulWidget {
   const PlayersScreen({super.key});
@@ -554,8 +556,6 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             ),
                             FilledButton(
                               onPressed: () {
-                                debugPrint(
-                                    'DEBUG: İstatistik Giriş Yap butonuna tıklandı');
                                 Navigator.pop(context);
                                 Navigator.pushReplacementNamed(
                                     context, AppRouter.login,
@@ -623,8 +623,6 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             ),
                             FilledButton(
                               onPressed: () {
-                                debugPrint(
-                                    'DEBUG: Maç Geçmişi Giriş Yap butonuna tıklandı');
                                 Navigator.pop(context);
                                 Navigator.pushReplacementNamed(
                                     context, AppRouter.login,
@@ -692,8 +690,6 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             ),
                             FilledButton(
                               onPressed: () {
-                                debugPrint(
-                                    'DEBUG: Tüm Maçlar Giriş Yap butonuna tıklandı');
                                 Navigator.pop(context);
                                 Navigator.pushReplacementNamed(
                                     context, AppRouter.login,
@@ -789,61 +785,17 @@ class _PlayersScreenState extends State<PlayersScreen> {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
-    debugPrint(
-        'DEBUG: İstatistikler aranıyor - Oyuncu: $playerName, UserId: $userId');
-
-    // ✅ Limit ekle - sadece son 100 oyunu çek (index oluşana kadar)
-    final snapshot = await FirebaseFirestore.instance
-        .collection('games')
-        .where('userId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
-        .limit(100)
-        .get();
-
-    debugPrint('DEBUG: Toplam oyun sayısı: ${snapshot.docs.length}');
-
-    int totalMatches = 0;
-    int wins = 0;
-    int totalScore = 0;
-    int highestScore = 0;
-    Map<String, int> opponentWins = {};
-
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      final player1 = data['player1'] as String;
-      final player2 = data['player2'] as String;
-      final player1Score = data['player1Score'] as int;
-      final player2Score = data['player2Score'] as int;
-
-      debugPrint(
-          'DEBUG: Oyun kontrol ediliyor - Player1: $player1, Player2: $player2, Aranan: $playerName');
-
-      if (player1 == playerName || player2 == playerName) {
-        totalMatches++;
-        debugPrint('DEBUG: Eşleşme bulundu! Toplam maç sayısı: $totalMatches');
-
-        final isPlayer1 = player1 == playerName;
-        final score = isPlayer1 ? player1Score : player2Score;
-        final opponent = isPlayer1 ? player2 : player1;
-
-        totalScore += score;
-        if (score > highestScore) {
-          highestScore = score;
-        }
-
-        if ((isPlayer1 && player1Score > player2Score) ||
-            (!isPlayer1 && player2Score > player1Score)) {
-          wins++;
-          opponentWins[opponent] = (opponentWins[opponent] ?? 0) + 1;
-          debugPrint('DEBUG: Kazanma! Toplam kazanma: $wins');
-        }
-      }
-    }
-
-    debugPrint(
-        'DEBUG: Final istatistikler - Toplam: $totalMatches, Kazanma: $wins, Toplam Puan: $totalScore, En Yüksek: $highestScore');
+    final stats = await PlayerStatsService().computeStats(
+      userId: userId,
+      playerName: playerName,
+    );
 
     if (!mounted) return;
+
+    final totalMatches = stats.totalMatches;
+    final wins = stats.wins;
+    final totalScore = stats.totalScore;
+    final highestScore = stats.highestScore;
 
     showDialog(
       context: this.context,
@@ -1116,7 +1068,7 @@ class _PlayerCardState extends State<PlayerCard>
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       // Ekran genişliğine göre farklı düzenler
-                      if (constraints.maxWidth < 400) {
+                      if (constraints.maxWidth < kCompactWidth) {
                         // Küçük ekranlar için dikey düzen
                         return Padding(
                           padding: const EdgeInsets.all(12),

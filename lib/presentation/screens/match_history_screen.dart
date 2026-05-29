@@ -153,28 +153,16 @@ class _MatchHistoryScreenState extends State<MatchHistoryScreen> {
             child: SafeArea(
               child: RefreshIndicator(
                 onRefresh: _loadMatchHistory,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return SingleChildScrollView(
-                      controller: _scrollController,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: HomeMatchListCard(
-                            cachedGameData: _cachedGameData,
-                            isGuestUser: _isGuestUser,
-                            scrollController: _scrollController,
-                            onDeleteGame: _deleteGame,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: HomeMatchListCard(
+                  cachedGameData: _cachedGameData,
+                  isGuestUser: _isGuestUser,
+                  scrollController: _scrollController,
+                  onDeleteGame: _deleteGame,
+                  expandVertically: true,
                 ),
+              ),
               ),
             ),
           ),

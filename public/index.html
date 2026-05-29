@@ -3,111 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tavla Skor - Backgammon Score Tracker</title>
+    <meta name="description" content="TavlaSkor (Tavla Skor) uygulaması için destek, iletişim ve sık sorulan sorular.">
+    <title>TavlaSkor — Destek / Support</title>
     <style>
+        :root {
+            --primary: #7c3aed;
+            --primary-dark: #5b21b6;
+            --text: #1e293b;
+            --muted: #64748b;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --border: #e2e8f0;
+        }
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 40px;
-            text-align: center;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            max-width: 500px;
-            margin: 20px;
-        }
-        .logo {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(45deg, #8E44AD, #9B59B6);
-            border-radius: 20px;
-            margin: 0 auto 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            color: white;
-            font-weight: bold;
-        }
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 2.5em;
-        }
-        .subtitle {
-            color: #7f8c8d;
-            font-size: 1.2em;
-            margin-bottom: 30px;
-        }
-        .description {
-            color: #34495e;
+            background: var(--bg);
+            color: var(--text);
             line-height: 1.6;
-            margin-bottom: 30px;
         }
-        .download-btn {
-            background: linear-gradient(45deg, #8E44AD, #9B59B6);
-            color: white;
-            padding: 15px 30px;
-            border: none;
-            border-radius: 25px;
-            font-size: 1.1em;
-            font-weight: bold;
-            cursor: pointer;
-            text-decoration: none;
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 2.5rem 1.25rem;
+            text-align: center;
+        }
+        header h1 { margin: 0 0 0.5rem; font-size: 1.75rem; }
+        header p { margin: 0; opacity: 0.95; max-width: 36rem; margin-inline: auto; }
+        main {
+            max-width: 42rem;
+            margin: 0 auto;
+            padding: 1.5rem 1.25rem 3rem;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .card h2 {
+            margin: 0 0 0.75rem;
+            font-size: 1.15rem;
+            color: var(--primary-dark);
+        }
+        .card h3 {
+            margin: 1.25rem 0 0.5rem;
+            font-size: 1rem;
+        }
+        .support-email {
             display: inline-block;
-            transition: transform 0.3s ease;
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--primary);
+            word-break: break-all;
         }
-        .download-btn:hover {
-            transform: translateY(-2px);
+        .btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.75rem 1.25rem;
+            background: var(--primary);
+            color: #fff !important;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
         }
-        .features {
-            margin-top: 30px;
-            text-align: left;
+        .btn:hover { background: var(--primary-dark); }
+        .btn-outline {
+            background: transparent;
+            color: var(--primary) !important;
+            border: 2px solid var(--primary);
         }
-        .features h3 {
-            color: #2c3e50;
-            margin-bottom: 15px;
+        .btn-outline:hover {
+            background: var(--primary);
+            color: #fff !important;
         }
-        .features ul {
-            color: #34495e;
-            line-height: 1.8;
+        ul { padding-left: 1.25rem; margin: 0.5rem 0; }
+        li { margin-bottom: 0.35rem; }
+        .muted { color: var(--muted); font-size: 0.9rem; }
+        .lang-block { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+        .lang-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            font-weight: 600;
         }
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            font-size: 0.875rem;
+            color: var(--muted);
+            border-top: 1px solid var(--border);
+        }
+        footer a { color: var(--primary); }
+        .store-links { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">🎲</div>
-        <h1>Tavla Skor</h1>
-        <p class="subtitle">Backgammon Score Tracker</p>
-        <p class="description">
-            Tavla oyunlarınızı takip edin, istatistiklerinizi görün ve arkadaşlarınızla rekabet edin. 
-            Modern ve kullanıcı dostu arayüz ile oyun skorlarınızı kolayca kaydedin.
-        </p>
-        
-        <a href="https://play.google.com/store/apps/details?id=com.uricaryn.backgammon_score_tracker" 
-           target="_blank" 
-           rel="noopener noreferrer" 
-           class="download-btn">Google Play'den İndir</a>
-        
-        <div class="features">
-            <h3>Özellikler:</h3>
-            <ul>
-                <li>🎯 Oyun skorlarını kolayca kaydetme</li>
-                <li>📊 Detaylı istatistikler ve analizler</li>
-                <li>👥 Arkadaşlarla rekabet etme</li>
-                <li>🏆 Turnuva organizasyonu</li>
-                <li>📱 Modern ve kullanıcı dostu arayüz</li>
-                <li>☁️ Bulut senkronizasyonu</li>
-            </ul>
-        </div>
-    </div>
+    <header>
+        <h1>🎲 TavlaSkor</h1>
+        <p>Backgammon Score Tracker — Destek ve yardım merkezi / Support &amp; Help Center</p>
+    </header>
+
+    <main>
+        <section class="card" id="support">
+            <h2>Destek / Support</h2>
+            <p>
+                Sorularınız, önerileriniz, hesap veya Premium üyelik talepleriniz için bizimle iletişime geçebilirsiniz.
+                <strong>We welcome your questions, feedback, and support requests.</strong>
+            </p>
+            <p><strong>E-posta / Email:</strong><br>
+                <a class="support-email" href="mailto:uricaryn@gmail.com?subject=TavlaSkor%20Destek">uricaryn@gmail.com</a>
+            </p>
+            <a class="btn" href="mailto:uricaryn@gmail.com?subject=TavlaSkor%20Destek%20Talebi&amp;body=Uygulama%20s%C3%BCr%C3%BCm%C3%BC%3A%20%0ACihaz%3A%20%0ASorununuz%3A%20">
+                Destek talebi gönder / Send support request
+            </a>
+            <p class="muted" style="margin-top: 1rem;">
+                Yanıt süresi: genellikle 1–3 iş günü içinde. / Typical response within 1–3 business days.
+            </p>
+            <div class="lang-block">
+                <div class="lang-label">E-postada belirtmeniz faydalı olur</div>
+                <ul>
+                    <li>Uygulama sürümü (Profil → Hakkında)</li>
+                    <li>Cihaz modeli ve iOS sürümü</li>
+                    <li>Sorunun kısa açıklaması ve varsa ekran görüntüsü</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="card" id="faq">
+            <h2>Sık sorulan sorular / FAQ</h2>
+
+            <h3>Hesap / giriş sorunları</h3>
+            <p>Apple veya e-posta ile giriş yapamıyorsanız uygulamayı güncelleyin, internet bağlantınızı kontrol edin ve destek e-postasına hesap türünüzü yazın.</p>
+
+            <h3>Premium üyelik</h3>
+            <p>Satın alma veya yenileme sorunlarında App Store satın alma geçmişinizi kontrol edin; uygulama içinde Profil → Satın alımları geri yükle. Sorun devam ederse makbuz ve Apple ID ile bize yazın.</p>
+
+            <h3>Veri ve gizlilik</h3>
+            <p>Kişisel verileriniz hakkında bilgi için <a href="privacy.html">Gizlilik Politikası / Privacy Policy</a> sayfasına bakın.</p>
+
+            <h3>Account &amp; sign-in (EN)</h3>
+            <p>If Sign in with Apple or email login fails, update the app, check your connection, and email us with your sign-in method.</p>
+
+            <h3>Premium (EN)</h3>
+            <p>For billing issues, check App Store purchase history and use Restore Purchases in the app Profile. Contact us with your receipt if needed.</p>
+        </section>
+
+        <section class="card" id="app">
+            <h2>Uygulama hakkında / About the app</h2>
+            <p>
+                TavlaSkor ile tavla skorlarınızı kaydedin, istatistiklerinizi görün, arkadaşlarınızla rekabet edin ve turnuvalar düzenleyin.
+            </p>
+            <div class="store-links">
+                <a class="btn btn-outline" href="https://play.google.com/store/apps/details?id=com.uricaryn.backgammon_score_tracker" target="_blank" rel="noopener noreferrer">Google Play</a>
+            </div>
+            <p class="muted" style="margin-top: 1rem;">iOS: App Store’da “TavlaSkor” adıyla arayın.</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>© TavlaSkor · <a href="privacy.html">Gizlilik Politikası</a> · <a href="mailto:uricaryn@gmail.com">uricaryn@gmail.com</a></p>
+    </footer>
 </body>
-</html> 
+</html>

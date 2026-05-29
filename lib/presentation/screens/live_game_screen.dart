@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:backgammon_score_tracker/core/models/game_session.dart';
@@ -11,10 +12,10 @@ import 'package:backgammon_score_tracker/core/services/match_summary_adapter.dar
 import 'package:backgammon_score_tracker/core/services/realtime_game_service.dart';
 import 'package:backgammon_score_tracker/core/services/tournament_match_service.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
-import 'package:backgammon_score_tracker/presentation/widgets/game_dice_panel.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/opening_roll_panel.dart';
 import 'package:backgammon_score_tracker/presentation/widgets/opening_result_banner.dart';
-import 'package:backgammon_score_tracker/presentation/widgets/interactive_backgammon_board.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/board/live_game_table.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/board/live_game_chat_panel.dart';
 
 class LiveGameScreen extends StatefulWidget {
   const LiveGameScreen({
@@ -39,19 +40,109 @@ class _LiveGameScreenState extends State<LiveGameScreen> {
   bool _shownEndDialog = false;
   Map<String, dynamic>? _tournamentMatchResult;
   bool _leftRoom = false;
+  bool _skipLeaveOnDispose = false;
+  GameSession? _session;
+  StreamSubscription<GameSession?>? _sessionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _rejoinOnOpen();
+    _sessionSubscription = _service.watchRoom(widget.roomId).listen(
+      (session) {
+        if (!mounted) return;
+
+        if (session == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.of(context).pop();
+          });
+          return;
+        }
+
+        _saveSummaryIfFinished(session);
+        _maybeShowEndDialog(context, session);
+        setState(() => _session = session);
+      },
+    );
+  }
 
   @override
   void dispose() {
+    _sessionSubscription?.cancel();
     _registerLeave();
     super.dispose();
   }
 
+  Future<void> _rejoinOnOpen() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await _service.rejoinRoom(
+        roomId: widget.roomId,
+        playerUid: user.uid,
+      );
+    } catch (_) {
+      // Room may not exist yet or user is joining fresh.
+    }
+  }
+
   void _registerLeave() {
-    if (_leftRoom) return;
+    if (_leftRoom || _skipLeaveOnDispose) return;
     _leftRoom = true;
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       _service.leaveRoom(roomId: widget.roomId, playerUid: user.uid);
+    }
+  }
+
+  Future<void> _deleteGame(BuildContext ctx) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final confirmed = await showDialog<bool>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Oyunu Sil'),
+        content: const Text(
+          'Bu canli oyun kalici olarak silinecek. Rakibiniz de oyuna '
+          'devam edemez.\n\nEmin misiniz?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Iptal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !ctx.mounted) return;
+    try {
+      _skipLeaveOnDispose = true;
+      _leftRoom = true;
+      await _service.deleteUnfinishedGame(
+        roomId: widget.roomId,
+        playerUid: user.uid,
+      );
+      if (!ctx.mounted) return;
+      Navigator.of(ctx).pop();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Oyun silindi')),
+      );
+    } catch (e) {
+      _skipLeaveOnDispose = false;
+      _leftRoom = false;
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
     }
   }
 
@@ -63,8 +154,9 @@ class _LiveGameScreenState extends State<LiveGameScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Oyundan Çık'),
         content: const Text(
-          'Odadan ayrılmak istediğinize emin misiniz?\n\n'
-          'Her iki oyuncu da ayrıldığında oda otomatik olarak silinir.',
+          'Masadan ayrılmak istediğinize emin misiniz?\n\n'
+          'Oyun kaydedilir; Online Tavla ekranından veya bildirimden '
+          'kaldığınız yerden devam edebilirsiniz.',
         ),
         actions: [
           TextButton(
@@ -364,7 +456,9 @@ class _LiveGameScreenState extends State<LiveGameScreen> {
         if (!didPop) _leaveGame(context);
       },
       child: Scaffold(
+        backgroundColor: const Color(0xFF142e18),
         appBar: AppBar(
+          backgroundColor: const Color(0xFF1B4332),
           automaticallyImplyLeading: false,
           title: const Text('Canli Oyun'),
           actions: [
@@ -394,78 +488,96 @@ class _LiveGameScreenState extends State<LiveGameScreen> {
                       );
                     },
                   ),
-                  IconButton(
-                    tooltip: 'Oyunu Sonlandır',
-                    icon: const Icon(Icons.exit_to_app, color: Colors.red),
-                    onPressed: () => _leaveGame(context),
+                  PopupMenuButton<String>(
+                    tooltip: 'Oyun secenekleri',
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'leave':
+                          _leaveGame(context);
+                          break;
+                        case 'delete':
+                          _deleteGame(context);
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'leave',
+                        child: ListTile(
+                          leading: Icon(Icons.exit_to_app),
+                          title: Text('Masadan ayril'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.delete_forever,
+                            color: Colors.red.shade700,
+                          ),
+                          title: Text(
+                            'Oyunu sil',
+                            style: TextStyle(color: Colors.red.shade700),
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ],
         ),
-        body: StreamBuilder<GameSession?>(
-          stream: _service.watchRoom(widget.roomId),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final session = snapshot.data;
-            if (session == null) {
-              // Room was deleted (both players left) — navigate back automatically.
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) Navigator.of(context).pop();
-              });
-              return const Center(child: CircularProgressIndicator());
-            }
-
-          _saveSummaryIfFinished(session);
-          _maybeShowEndDialog(context, session);
-
-          final user = FirebaseAuth.instance.currentUser;
-          final isParticipant = user != null &&
-              (user.uid == session.playerWhiteId || user.uid == session.playerBlackId);
-          final myColor = user?.uid == session.playerWhiteId
-              ? PlayerColor.white
-              : PlayerColor.black;
-
-          final isOpeningRoll =
-              session.state.status == GameStatus.openingRoll;
-          final canOpeningRoll = isParticipant &&
-              isOpeningRoll &&
-              (myColor == PlayerColor.white
-                  ? session.state.openingRollWhite == null
-                  : session.state.openingRollBlack == null);
-
-          final isMyTurn = isParticipant &&
-              !isOpeningRoll &&
-              session.state.currentTurn == myColor &&
-              session.state.status == GameStatus.active;
-
-          final legalMoves =
-              (isMyTurn && isParticipant) ? _engine.legalMoves(session.state) : <Move>[];
-
-          final canUndo = isMyTurn &&
-              isParticipant &&
-              _canUndoTurn(session.state);
-
-          return _GameBody(
-            session: session,
-            myColor: myColor,
-            isParticipant: isParticipant,
-            isMyTurn: isMyTurn,
-            legalMoves: legalMoves,
-            onRoll: () => _roll(session),
-            onMove: _applyMove,
-            isOpeningRoll: isOpeningRoll,
-            canOpeningRoll: canOpeningRoll,
-            onOpeningRoll: _openingRoll,
-            canUndo: canUndo,
-            onUndo: _undoTurn,
-          );
-        },
-        ),
+        body: _session == null
+            ? const Center(child: CircularProgressIndicator())
+            : _buildGameBody(_session!),
       ),
+    );
+  }
+
+  Widget _buildGameBody(GameSession session) {
+    final user = FirebaseAuth.instance.currentUser;
+    final isParticipant = user != null &&
+        (user.uid == session.playerWhiteId || user.uid == session.playerBlackId);
+    final myColor = user?.uid == session.playerWhiteId
+        ? PlayerColor.white
+        : PlayerColor.black;
+
+    final isOpeningRoll = session.state.status == GameStatus.openingRoll;
+    final canOpeningRoll = isParticipant &&
+        isOpeningRoll &&
+        (myColor == PlayerColor.white
+            ? session.state.openingRollWhite == null
+            : session.state.openingRollBlack == null);
+
+    final isMyTurn = isParticipant &&
+        !isOpeningRoll &&
+        session.state.currentTurn == myColor &&
+        session.state.status == GameStatus.active;
+
+    final legalMoves = (isMyTurn && isParticipant)
+        ? _engine.legalMoves(session.state)
+        : <Move>[];
+
+    final canUndo =
+        isMyTurn && isParticipant && _canUndoTurn(session.state);
+
+    return _GameBody(
+      roomId: widget.roomId,
+      session: session,
+      myColor: myColor,
+      isParticipant: isParticipant,
+      isMyTurn: isMyTurn,
+      legalMoves: legalMoves,
+      onRoll: () => _roll(session),
+      onMove: _applyMove,
+      isOpeningRoll: isOpeningRoll,
+      canOpeningRoll: canOpeningRoll,
+      onOpeningRoll: _openingRoll,
+      canUndo: canUndo,
+      onUndo: _undoTurn,
     );
   }
 }
@@ -474,6 +586,7 @@ class _LiveGameScreenState extends State<LiveGameScreen> {
 
 class _GameBody extends StatelessWidget {
   const _GameBody({
+    required this.roomId,
     required this.session,
     required this.myColor,
     required this.isParticipant,
@@ -488,6 +601,7 @@ class _GameBody extends StatelessWidget {
     required this.onUndo,
   });
 
+  final String roomId;
   final GameSession session;
   final PlayerColor myColor;
   final bool isParticipant;
@@ -518,6 +632,9 @@ class _GameBody extends StatelessWidget {
     final showBarWarning = isMyTurn && bar > 0;
     final bearOffCount = legalMoves.where((m) => m.bearOff).length;
 
+    final chatHeight =
+        (MediaQuery.sizeOf(context).height * 0.28).clamp(200.0, 260.0);
+
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -530,6 +647,7 @@ class _GameBody extends StatelessWidget {
             isMyTurn: isMyTurn,
             isParticipant: isParticipant,
           ),
+          const SizedBox(height: 2),
           if (gs.status == GameStatus.active &&
               gs.openingShowWhite != null &&
               gs.openingShowBlack != null &&
@@ -545,59 +663,66 @@ class _GameBody extends StatelessWidget {
                     : session.playerBlackName,
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: isOpeningRoll
-                ? OpeningRollPanel(
-                    openingRollWhite: gs.openingRollWhite,
-                    openingRollBlack: gs.openingRollBlack,
-                    myColor: myColor,
-                    canRoll: canOpeningRoll,
-                    onRoll: onOpeningRoll,
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: GameDicePanel(
-                          remainingDice: gs.remainingDice,
-                          canRoll: gs.remainingDice.isEmpty &&
-                              gs.status == GameStatus.active &&
-                              isMyTurn &&
-                              isParticipant,
-                          onRoll: onRoll,
-                        ),
-                      ),
-                      if (canUndo) ...[
-                        const SizedBox(width: 4),
-                        IconButton.filledTonal(
-                          tooltip: 'Bu turdaki tum hamleleri geri al',
-                          onPressed: onUndo,
-                          icon: const Icon(Icons.undo, size: 22),
-                        ),
-                      ],
-                    ],
-                  ),
-          ),
           Expanded(
-            child: Center(
-              child: InteractiveBackgammonBoard(
-                state: gs,
-                legalMoves: legalMoves,
-                onMoveSelected: onMove,
-                myColor: myColor,
-                interactive: isParticipant,
+            child: LiveGameTable(
+              state: gs,
+              legalMoves: legalMoves,
+              myColor: myColor,
+              interactive: isParticipant,
+              remainingDice: gs.remainingDice,
+              canRoll: gs.remainingDice.isEmpty &&
+                  gs.status == GameStatus.active &&
+                  isMyTurn &&
+                  isParticipant,
+              onRoll: onRoll,
+              onMove: onMove,
+              showDice: !isOpeningRoll,
+              headerPanel: isOpeningRoll
+                  ? OpeningRollPanel(
+                      openingRollWhite: gs.openingRollWhite,
+                      openingRollBlack: gs.openingRollBlack,
+                      myColor: myColor,
+                      canRoll: canOpeningRoll,
+                      onRoll: onOpeningRoll,
+                    )
+                  : null,
+              canUndo: canUndo,
+              onUndo: onUndo,
+              statusMessage: _statusMessage(
+                session: session,
+                isParticipant: isParticipant,
+                isMyTurn: isMyTurn,
+                showBarWarning: showBarWarning,
+                barCount: bar,
+                bearOffCount: bearOffCount,
+                turnName: turnName,
               ),
+              statusIcon: _statusIcon(
+                session: session,
+                isParticipant: isParticipant,
+                isMyTurn: isMyTurn,
+                showBarWarning: showBarWarning,
+                bearOffCount: bearOffCount,
+              ),
+              statusColor: _statusColor(
+                context: context,
+                session: session,
+                isParticipant: isParticipant,
+                isMyTurn: isMyTurn,
+                showBarWarning: showBarWarning,
+                bearOffCount: bearOffCount,
+              ),
+              whiteBorneOff: gs.borneOff[PlayerColor.white] ?? 0,
+              blackBorneOff: gs.borneOff[PlayerColor.black] ?? 0,
             ),
           ),
-          _StatusBar(
-            turnName: turnName,
-            isMyTurn: isMyTurn,
-            showBarWarning: showBarWarning,
-            barCount: bar,
-            bearOffCount: bearOffCount,
-            session: session,
-            isParticipant: isParticipant,
+          SizedBox(
+            height: chatHeight,
+            child: LiveGameChatPanel(
+              roomId: roomId,
+              session: session,
+              canSend: isParticipant,
+            ),
           ),
         ],
       ),
@@ -791,180 +916,6 @@ class _PlayerBar extends StatelessWidget {
   }
 }
 
-// ── Status bar ──────────────────────────────────────────────────────────────
-
-class _StatusBar extends StatelessWidget {
-  const _StatusBar({
-    required this.turnName,
-    required this.isMyTurn,
-    required this.showBarWarning,
-    required this.barCount,
-    required this.bearOffCount,
-    required this.session,
-    required this.isParticipant,
-  });
-
-  final String turnName;
-  final bool isMyTurn;
-  final bool showBarWarning;
-  final int barCount;
-  final int bearOffCount;
-  final GameSession session;
-  final bool isParticipant;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final gs = session.state;
-
-    String message;
-    Color msgColor;
-    IconData icon;
-
-    if (!isParticipant) {
-      message = 'Bu odaya ait bir oyuncu degilsiniz.';
-      msgColor = cs.error;
-      icon = Icons.block;
-    } else if (gs.status == GameStatus.finished) {
-      final winnerName = gs.winner == PlayerColor.white
-          ? session.playerWhiteName
-          : session.playerBlackName;
-      message = '$winnerName kazandi!';
-      msgColor = Colors.amber;
-      icon = Icons.emoji_events;
-    } else if (gs.status == GameStatus.waiting) {
-      message = 'Rakip bekleniyor...';
-      msgColor = cs.onSurfaceVariant;
-      icon = Icons.person_search;
-    } else if (showBarWarning) {
-      message = "Bar'da $barCount tasin var — once bar'dan cik!";
-      msgColor = cs.error;
-      icon = Icons.warning_amber;
-    } else if (isMyTurn && bearOffCount > 0) {
-      message = 'Tasini cikarabilirsin! Sagdaki OFF bolgesine dokun.';
-      msgColor = Colors.green;
-      icon = Icons.arrow_upward;
-    } else if (isMyTurn && gs.remainingDice.isNotEmpty) {
-      message = 'Tahta uzerinde hamle yap veya tum zarlari kullan.';
-      msgColor = cs.onSurfaceVariant;
-      icon = Icons.touch_app;
-    } else {
-      message = '$turnName oynuyor...';
-      msgColor = cs.onSurfaceVariant;
-      icon = Icons.hourglass_bottom;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      margin: const EdgeInsets.fromLTRB(8, 2, 8, 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: LinearGradient(
-          colors: [
-            cs.surfaceContainerHighest.withValues(alpha: 0.5),
-            cs.surfaceContainerHighest.withValues(alpha: 0.3),
-          ],
-        ),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        children: [
-          _BorneOffBadge(
-            white: gs.borneOff[PlayerColor.white] ?? 0,
-            black: gs.borneOff[PlayerColor.black] ?? 0,
-          ),
-          const SizedBox(width: 10),
-          Icon(icon, size: 16, color: msgColor),
-          const SizedBox(width: 6),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (child, animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.5),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
-                  ),
-                );
-              },
-              child: Text(
-                message,
-                key: ValueKey(message),
-                style: TextStyle(fontSize: 12, color: msgColor),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BorneOffBadge extends StatelessWidget {
-  const _BorneOffBadge({required this.white, required this.black});
-
-  final int white;
-  final int black;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              gradient: const RadialGradient(
-                center: Alignment(-0.3, -0.3),
-                colors: [Colors.white, Color(0xFFD0C8C0)],
-              ),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFFD4AF37),
-                width: 0.8,
-              ),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 1)],
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text('$white/15',
-              style: TextStyle(fontSize: 11, color: cs.onSurface, fontWeight: FontWeight.w500)),
-        ]),
-        const SizedBox(height: 3),
-        Row(children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              gradient: const RadialGradient(
-                center: Alignment(-0.3, -0.3),
-                colors: [Color(0xFF444444), Colors.black],
-              ),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white30, width: 0.8),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text('$black/15',
-              style: TextStyle(fontSize: 11, color: cs.onSurface, fontWeight: FontWeight.w500)),
-        ]),
-      ],
-    );
-  }
-}
-
 class _TournamentMatchProgress extends StatelessWidget {
   const _TournamentMatchProgress({required this.data});
 
@@ -1065,4 +1016,68 @@ class _TournamentMatchProgress extends StatelessWidget {
       ),
     ).animate().fadeIn(delay: 400.ms, duration: 400.ms);
   }
+}
+
+String _statusMessage({
+  required GameSession session,
+  required bool isParticipant,
+  required bool isMyTurn,
+  required bool showBarWarning,
+  required int barCount,
+  required int bearOffCount,
+  required String turnName,
+}) {
+  final gs = session.state;
+  if (!isParticipant) return 'Bu odaya ait bir oyuncu degilsiniz.';
+  if (gs.status == GameStatus.finished) {
+    final winnerName = gs.winner == PlayerColor.white
+        ? session.playerWhiteName
+        : session.playerBlackName;
+    return '$winnerName kazandi!';
+  }
+  if (gs.status == GameStatus.waiting) return 'Rakip bekleniyor...';
+  if (showBarWarning) {
+    return "Bar'da $barCount tas — once bar'dan cik";
+  }
+  if (isMyTurn && bearOffCount > 0) {
+    return 'Tas cikar: sagdaki OFF bolgesine dokun';
+  }
+  if (isMyTurn && gs.remainingDice.isNotEmpty) {
+    return 'Hamle yap veya tum zarlari kullan';
+  }
+  return '$turnName oynuyor...';
+}
+
+IconData _statusIcon({
+  required GameSession session,
+  required bool isParticipant,
+  required bool isMyTurn,
+  required bool showBarWarning,
+  required int bearOffCount,
+}) {
+  final gs = session.state;
+  if (!isParticipant) return Icons.block;
+  if (gs.status == GameStatus.finished) return Icons.emoji_events;
+  if (gs.status == GameStatus.waiting) return Icons.person_search;
+  if (showBarWarning) return Icons.warning_amber;
+  if (isMyTurn && bearOffCount > 0) return Icons.arrow_upward;
+  if (isMyTurn && gs.remainingDice.isNotEmpty) return Icons.touch_app;
+  return Icons.hourglass_bottom;
+}
+
+Color _statusColor({
+  required BuildContext context,
+  required GameSession session,
+  required bool isParticipant,
+  required bool isMyTurn,
+  required bool showBarWarning,
+  required int bearOffCount,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  final gs = session.state;
+  if (!isParticipant) return cs.error;
+  if (gs.status == GameStatus.finished) return Colors.amber;
+  if (showBarWarning) return cs.error;
+  if (isMyTurn && bearOffCount > 0) return Colors.greenAccent;
+  return Colors.white70;
 }

@@ -6,6 +6,8 @@ import 'package:backgammon_score_tracker/core/services/match_challenge_service.d
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
+import 'package:backgammon_score_tracker/core/controllers/friends_screen_controller.dart';
+import 'package:backgammon_score_tracker/core/widgets/guest_feature_card.dart';
 import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/presentation/screens/player_match_history_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/tournaments_screen.dart';
@@ -41,10 +43,14 @@ class _FriendsScreenState extends State<FriendsScreen>
   Set<String> _sentRequests = {}; // Gönderilen arkadaşlık isteklerini takip et
   Future<bool>? _premiumAccessFuture;
   StreamSubscription<bool>? _premiumActivatedSub;
+  late final FriendsScreenController _streamsController;
 
   @override
   void initState() {
     super.initState();
+    _streamsController = FriendsScreenController(
+      friendshipService: _friendshipService,
+    );
     _premiumAccessFuture = _premiumService.hasPremiumAccess();
     _premiumActivatedSub =
         _premiumService.premiumActivatedStream.listen((active) {
@@ -60,6 +66,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   @override
   void dispose() {
     _premiumActivatedSub?.cancel();
+    _streamsController.dispose();
     _tabController.dispose();
     _searchController.dispose();
     _searchDebounceTimer?.cancel();
@@ -289,51 +296,12 @@ class _FriendsScreenState extends State<FriendsScreen>
         appBar: AppBar(
           title: const Text('Arkadaşlar'),
         ),
-        body: BackgroundBoard(
-          child: Center(
-            child: StyledCard(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.people_outline,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Arkadaş Özelliği',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Arkadaş ekleme ve arkadaşlarınızın maçlarını görme özelliği için hesap oluşturmanız gerekiyor.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          '/login',
-                          (route) => false,
-                        );
-                      },
-                      icon: const Icon(Icons.login),
-                      label: const Text('Giriş Yap / Kayıt Ol'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        body: const GuestFeatureCard(
+          icon: Icons.people_outline,
+          title: 'Arkadaş Özelliği',
+          message:
+              'Arkadaş ekleme ve arkadaşlarınızın maçlarını görme özelliği için hesap oluşturmanız gerekiyor.',
+          actionLabel: 'Giriş Yap / Kayıt Ol',
         ),
       );
     }
@@ -433,14 +401,14 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildFriendsTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _friendshipService.getFriends(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return ListenableBuilder(
+      listenable: _streamsController,
+      builder: (context, _) {
+        if (_streamsController.friendsLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
+        if (_streamsController.friendsError != null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -451,7 +419,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                   color: Colors.red,
                 ),
                 const SizedBox(height: 16),
-                Text('Hata: ${snapshot.error}'),
+                Text('Hata: ${_streamsController.friendsError}'),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => setState(() {}),
@@ -462,7 +430,7 @@ class _FriendsScreenState extends State<FriendsScreen>
           );
         }
 
-        final friends = snapshot.data ?? [];
+        final friends = _streamsController.friends;
 
         if (friends.isEmpty) {
           return Center(
@@ -661,18 +629,18 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildIncomingRequestsTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _friendshipService.getIncomingFriendRequests(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return ListenableBuilder(
+      listenable: _streamsController,
+      builder: (context, _) {
+        if (_streamsController.incomingLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Hata: ${snapshot.error}'));
+        if (_streamsController.incomingError != null) {
+          return Center(child: Text('Hata: ${_streamsController.incomingError}'));
         }
 
-        final requests = snapshot.data ?? [];
+        final requests = _streamsController.incomingRequests;
 
         if (requests.isEmpty) {
           return Center(
@@ -793,18 +761,18 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildOutgoingRequestsTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _friendshipService.getOutgoingFriendRequests(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return ListenableBuilder(
+      listenable: _streamsController,
+      builder: (context, _) {
+        if (_streamsController.outgoingLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Hata: ${snapshot.error}'));
+        if (_streamsController.outgoingError != null) {
+          return Center(child: Text('Hata: ${_streamsController.outgoingError}'));
         }
 
-        final requests = snapshot.data ?? [];
+        final requests = _streamsController.outgoingRequests;
 
         if (requests.isEmpty) {
           return Center(
@@ -1272,14 +1240,14 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildActivityTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _friendshipService.getFriends(),
-      builder: (context, friendsSnapshot) {
-        if (friendsSnapshot.connectionState == ConnectionState.waiting) {
+    return ListenableBuilder(
+      listenable: _streamsController,
+      builder: (context, _) {
+        if (_streamsController.friendsLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (friendsSnapshot.hasError) {
+        if (_streamsController.friendsError != null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1290,13 +1258,13 @@ class _FriendsScreenState extends State<FriendsScreen>
                   color: Colors.red,
                 ),
                 const SizedBox(height: 16),
-                Text('Hata: ${friendsSnapshot.error}'),
+                Text('Hata: ${_streamsController.friendsError}'),
               ],
             ),
           );
         }
 
-        final friends = friendsSnapshot.data ?? [];
+        final friends = _streamsController.friends;
 
         if (friends.isEmpty) {
           return Center(

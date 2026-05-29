@@ -9,6 +9,8 @@ import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/presentation/screens/tournament_detail_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/premium_upgrade_screen.dart';
 import 'package:backgammon_score_tracker/core/services/premium_service.dart';
+import 'package:backgammon_score_tracker/core/controllers/tournaments_screen_controller.dart';
+import 'package:backgammon_score_tracker/core/widgets/guest_feature_card.dart';
 
 class TournamentsScreen extends StatefulWidget {
   final int? initialTab;
@@ -31,6 +33,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   bool _isGuestUser = false;
   Future<bool>? _premiumAccessFuture;
   StreamSubscription<bool>? _premiumActivatedSub;
+  late final TournamentsScreenController _streamsController;
 
   @override
   void initState() {
@@ -39,6 +42,9 @@ class _TournamentsScreenState extends State<TournamentsScreen>
       length: 4,
       vsync: this,
       initialIndex: widget.initialTab ?? 0,
+    );
+    _streamsController = TournamentsScreenController(
+      tournamentService: _tournamentService,
     );
     _premiumAccessFuture = _premiumService.hasPremiumAccess();
     _premiumActivatedSub =
@@ -68,6 +74,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   @override
   void dispose() {
     _premiumActivatedSub?.cancel();
+    _streamsController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -79,51 +86,12 @@ class _TournamentsScreenState extends State<TournamentsScreen>
         appBar: AppBar(
           title: const Text('Turnuvalar'),
         ),
-        body: BackgroundBoard(
-          child: Center(
-            child: StyledCard(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.emoji_events_outlined,
-                      size: 64,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Turnuva Özelliği',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Turnuva oluşturma ve katılma özelliği için hesap oluşturmanız gerekiyor.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          '/login',
-                          (route) => false,
-                        );
-                      },
-                      icon: const Icon(Icons.login),
-                      label: const Text('Giriş Yap / Kayıt Ol'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        body: const GuestFeatureCard(
+          icon: Icons.emoji_events_outlined,
+          title: 'Turnuva Özelliği',
+          message:
+              'Turnuva oluşturma ve katılma özelliği için hesap oluşturmanız gerekiyor.',
+          actionLabel: 'Giriş Yap / Kayıt Ol',
         ),
       );
     }
@@ -193,22 +161,21 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   }
 
   Widget _buildPersonalTournamentsTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _tournamentService.getTournaments(
-          category: TournamentService.tournamentCategoryPersonal),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return ListenableBuilder(
+      listenable: _streamsController,
+      builder: (context, _) {
+        if (_streamsController.personalLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
+        if (_streamsController.personalError != null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.error_outline, size: 64, color: Colors.red),
                 const SizedBox(height: 16),
-                Text('Hata: ${snapshot.error}'),
+                Text('Hata: ${_streamsController.personalError}'),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => setState(() {}),
@@ -219,7 +186,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
           );
         }
 
-        final tournaments = snapshot.data ?? [];
+        final tournaments = _streamsController.personalTournaments;
 
         if (tournaments.isEmpty) {
           return Center(
@@ -341,22 +308,21 @@ class _TournamentsScreenState extends State<TournamentsScreen>
           );
         }
 
-        return StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _tournamentService.getTournaments(
-              category: TournamentService.tournamentCategorySocial),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+        return ListenableBuilder(
+          listenable: _streamsController,
+          builder: (context, _) {
+            if (_streamsController.socialLoading) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasError) {
+            if (_streamsController.socialError != null) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.error_outline, size: 64, color: Colors.red),
                     const SizedBox(height: 16),
-                    Text('Hata: ${snapshot.error}'),
+                    Text('Hata: ${_streamsController.socialError}'),
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () => setState(() {}),
@@ -367,7 +333,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
               );
             }
 
-            final tournaments = snapshot.data ?? [];
+            final tournaments = _streamsController.socialTournaments;
 
             if (tournaments.isEmpty) {
               return Center(
@@ -586,21 +552,21 @@ class _TournamentsScreenState extends State<TournamentsScreen>
   }
 
   Widget _buildInvitationsTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _tournamentService.getTournamentInvitations(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return ListenableBuilder(
+      listenable: _streamsController,
+      builder: (context, _) {
+        if (_streamsController.invitationsLoading) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError) {
+        if (_streamsController.invitationsError != null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.error_outline, size: 64, color: Colors.red),
                 const SizedBox(height: 16),
-                Text('Hata: ${snapshot.error}'),
+                Text('Hata: ${_streamsController.invitationsError}'),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () => setState(() {}),
@@ -611,7 +577,7 @@ class _TournamentsScreenState extends State<TournamentsScreen>
           );
         }
 
-        final invitations = snapshot.data ?? [];
+        final invitations = _streamsController.invitations;
 
         if (invitations.isEmpty) {
           return Center(

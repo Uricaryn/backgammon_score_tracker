@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:backgammon_score_tracker/core/models/game_state.dart';
-import 'package:backgammon_score_tracker/presentation/widgets/game_dice_panel.dart'
-    show Dice3D;
+import 'package:backgammon_score_tracker/presentation/widgets/board/package_dice_panel.dart';
 
 /// Oyun başlarken açılış zarlarının sonucu ve ilk hamleyi yapacak oyuncu.
 class OpeningResultBanner extends StatelessWidget {
@@ -124,7 +123,7 @@ class _DieLine extends StatelessWidget {
             color: cs.onSurfaceVariant,
           ),
         ),
-        Dice3D(value: value, size: 32),
+        PackageDieFace(value: value, size: 36),
       ],
     );
   }

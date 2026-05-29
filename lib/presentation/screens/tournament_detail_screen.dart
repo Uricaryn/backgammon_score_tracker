@@ -9,7 +9,8 @@ import 'package:backgammon_score_tracker/core/routes/app_router.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
 import 'package:backgammon_score_tracker/core/widgets/styled_card.dart';
 import 'package:backgammon_score_tracker/core/utils/number_utils.dart';
-import 'package:backgammon_score_tracker/presentation/widgets/home_scoreboard_card.dart';
+import 'package:backgammon_score_tracker/core/controllers/tournament_detail_controller.dart';
+import 'package:backgammon_score_tracker/presentation/widgets/tournament/tournament_scoreboard_tab.dart';
 
 class TournamentDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tournament;
@@ -29,6 +30,7 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   final TournamentService _tournamentService = TournamentService();
   final TournamentMatchService _tournamentMatchService = TournamentMatchService();
   final ScreenshotController _screenshotController = ScreenshotController();
+  late final TournamentDetailController _detailController;
 
   bool get _isOnlineTournament {
     final settings =
@@ -45,10 +47,18 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
     final tabCount =
         isPersonal ? 3 : 4; // Kişisel turnuvalar için 3, sosyal için 4
     _tabController = TabController(length: tabCount, vsync: this);
+    _detailController = TournamentDetailController(
+      tournamentId: widget.tournament['id'] as String,
+      initialParticipants: List<String>.from(
+        widget.tournament['participants'] ?? [],
+      ),
+      tournamentService: _tournamentService,
+    );
   }
 
   @override
   void dispose() {
+    _detailController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -126,88 +136,26 @@ class _TournamentDetailScreenState extends State<TournamentDetailScreen>
   }
 
   Widget _buildScoreboardTab() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tournaments')
-          .doc(widget.tournament['id'])
-          .snapshots(),
-      builder: (context, tournamentSnapshot) {
-        if (tournamentSnapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (tournamentSnapshot.hasError) {
-          return Center(child: Text('Hata: ${tournamentSnapshot.error}'));
-        }
-
-        if (!tournamentSnapshot.hasData || !tournamentSnapshot.data!.exists) {
-          return const Center(child: Text('Turnuva bulunamadı'));
-        }
-
-        final tournamentData =
-            tournamentSnapshot.data!.data() as Map<String, dynamic>;
-        final participants =
-            List<String>.from(tournamentData['participants'] ?? []);
-
-        return StreamBuilder<List<Map<String, dynamic>>>(
-          stream:
-              _tournamentService.getTournamentMatches(widget.tournament['id']),
-          builder: (context, matchesSnapshot) {
-            if (matchesSnapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (matchesSnapshot.hasError) {
-              return Center(child: Text('Hata: ${matchesSnapshot.error}'));
-            }
-
-            final matches = matchesSnapshot.data ?? [];
-            final completedMatches =
-                matches.where((m) => m['status'] == 'completed').toList();
-
-            // Tüm maçları (completed + pending) kullanarak oyuncu listesi oluştur
-            final allMatches = matches;
-
-            // Tournament maçlarını HomeScoreboardCard için uygun formata çevir
-            return FutureBuilder<Map<String, dynamic>>(
-              future: _convertMatchesToGameDataWithParticipants(
-                completedMatches,
-                allMatches,
-                participants,
-                tournamentData['category'],
-              ),
-              builder: (context, gameDataSnapshot) {
-                if (gameDataSnapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (gameDataSnapshot.hasError) {
-                  return Center(child: Text('Hata: ${gameDataSnapshot.error}'));
-                }
-
-                final gameData = gameDataSnapshot.data ??
-                    {
-                      'data': [],
-                      'lastUpdated': DateTime.now().millisecondsSinceEpoch,
-                    };
-
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: HomeScoreboardCard(
-                    cachedGameData: gameData,
-                    isGuestUser: false,
-                    screenshotController: _screenshotController,
-                    onShare: _shareScoreboard,
-                    onPlayerTap: (playerName) => _showTournamentPlayerStats(
-                        playerName, completedMatches),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
+    return TournamentScoreboardTab(
+      controller: _detailController,
+      screenshotController: _screenshotController,
+      convertMatches: ({
+        required completedMatches,
+        required allMatches,
+        required participants,
+        required tournamentCategory,
+      }) =>
+          _convertMatchesToGameDataWithParticipants(
+        completedMatches,
+        allMatches,
+        participants,
+        tournamentCategory,
+      ),
+      onShare: _shareScoreboard,
+      onPlayerTap: (playerName) => _showTournamentPlayerStats(
+        playerName,
+        _detailController.completedMatches,
+      ),
     );
   }
 

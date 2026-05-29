@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 
@@ -48,6 +49,19 @@ class CloudFunctionsSafeService {
     return _platformAllowed && _remoteEnabled;
   }
 
+  /// Callable isteklerinde Firebase Auth jetonunun hazır olmasını sağlar.
+  Future<bool> _ensureAuthToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    try {
+      await user.reload();
+      final token = await user.getIdToken(true);
+      return token != null && token.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<HttpsCallableResult<dynamic>?> call(
     String name, {
     Map<String, dynamic>? data,
@@ -57,11 +71,24 @@ class CloudFunctionsSafeService {
       debugPrint('Cloud Functions disabled for this platform/flag: $name');
       return null;
     }
+    if (!await _ensureAuthToken()) {
+      if (kDebugMode) {
+        debugPrint('Cloud Function skipped ($name): oturum yok veya auth token hazır değil');
+      }
+      return null;
+    }
     try {
       final callable = _functions.httpsCallable(name);
       return await callable.call(data).timeout(timeout);
     } catch (e) {
-      debugPrint('Cloud Function call failed ($name): $e');
+      final message = e.toString();
+      if (message.contains('unauthenticated')) {
+        if (kDebugMode) {
+          debugPrint('Cloud Function skipped ($name): kimlik doğrulama gerekli');
+        }
+      } else {
+        debugPrint('Cloud Function call failed ($name): $e');
+      }
       return null;
     }
   }

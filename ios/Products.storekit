@@ -14,26 +14,7 @@
 
   ],
   "products" : [
-    {
-      "displayPrice" : "19.99",
-      "familyShareable" : false,
-      "internalID" : "premium_monthly_local",
-      "localizations" : [
-        {
-          "description" : "1 ay premium erişim",
-          "displayName" : "Aylık Premium",
-          "locale" : "tr"
-        },
-        {
-          "description" : "1 month premium access",
-          "displayName" : "Monthly Premium",
-          "locale" : "en_US"
-        }
-      ],
-      "productID" : "premium_monthly",
-      "referenceName" : "premium_monthly",
-      "type" : "NonConsumable"
-    }
+
   ],
   "settings" : {
     "_failTransactionsEnabled" : false,
@@ -44,7 +25,49 @@
     ]
   },
   "subscriptionGroups" : [
+    {
+      "id" : "premium_subscription_group",
+      "localizations" : [
+        {
+          "description" : "Premium membership",
+          "displayName" : "Premium",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
 
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "premium_monthly_sub",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "1 ay premium erişim",
+              "displayName" : "Aylık Premium",
+              "locale" : "tr"
+            },
+            {
+              "description" : "1 month premium access",
+              "displayName" : "Monthly Premium",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "premium_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "premium_monthly",
+          "subscriptionGroupID" : "premium_subscription_group",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
   ],
   "version" : {
     "major" : 4,

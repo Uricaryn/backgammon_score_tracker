@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:backgammon_score_tracker/core/models/notification_model.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
@@ -5,28 +9,78 @@ import 'package:backgammon_score_tracker/core/services/notification_service.dart
 import 'package:backgammon_score_tracker/core/error/error_service.dart';
 
 class NotificationProvider extends ChangeNotifier {
-  final FirebaseService _firebaseService = FirebaseService();
-  final NotificationService _notificationService = NotificationService();
+  NotificationProvider({
+    FirebaseService? firebaseService,
+    NotificationService? notificationService,
+    FirebaseFirestore? firestore,
+  })  : _firebaseService = firebaseService ?? FirebaseService(),
+        _notificationService = notificationService ?? NotificationService(),
+        _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseService _firebaseService;
+  final NotificationService _notificationService;
+  final FirebaseFirestore _firestore;
 
   List<NotificationModel> _notifications = [];
   NotificationPreferences _preferences = NotificationPreferences();
   bool _isLoading = false;
   String? _error;
+  int _unreadBadgeCount = 0;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _unreadSubscription;
+  String? _badgeUserId;
 
-  // Getters
   List<NotificationModel> get notifications => _notifications;
   NotificationPreferences get preferences => _preferences;
   bool get isLoading => _isLoading;
   String? get error => _error;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
+  int get unreadBadgeCount => _unreadBadgeCount;
 
-  // Bildirimleri yükle
+  void attachUnreadBadgeListener([String? userId]) {
+    final resolvedUserId = userId ?? FirebaseAuth.instance.currentUser?.uid;
+    if (resolvedUserId == null || resolvedUserId == _badgeUserId) {
+      return;
+    }
+
+    _unreadSubscription?.cancel();
+    _badgeUserId = resolvedUserId;
+
+    _unreadSubscription = _firestore
+        .collection('notifications')
+        .where('userId', isEqualTo: resolvedUserId)
+        .where('isRead', isEqualTo: false)
+        .orderBy('timestamp', descending: true)
+        .limit(50)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        final count = snapshot.docs.length;
+        if (_unreadBadgeCount != count) {
+          _unreadBadgeCount = count;
+          notifyListeners();
+        }
+      },
+      onError: (_) {},
+    );
+  }
+
+  void detachUnreadBadgeListener() {
+    _unreadSubscription?.cancel();
+    _unreadSubscription = null;
+    _badgeUserId = null;
+    if (_unreadBadgeCount != 0) {
+      _unreadBadgeCount = 0;
+      notifyListeners();
+    }
+  }
+
   Future<void> loadNotifications() async {
     _setLoading(true);
     _clearError();
 
     try {
       _notifications = await _firebaseService.getNotifications();
+      _unreadBadgeCount = unreadCount;
       notifyListeners();
     } catch (e) {
       _setError(ErrorService.notificationLoadFailed);
@@ -35,7 +89,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Bildirim tercihlerini yükle
   Future<void> loadPreferences() async {
     try {
       _preferences = await _firebaseService.getNotificationPreferences();
@@ -45,7 +98,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Bildirim tercihlerini güncelle
   Future<void> updatePreferences(NotificationPreferences newPreferences) async {
     _setLoading(true);
     _clearError();
@@ -61,12 +113,10 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Bildirimi okundu olarak işaretle
   Future<void> markAsRead(String notificationId) async {
     try {
       await _firebaseService.markNotificationAsRead(notificationId);
 
-      // Local state'i güncelle
       final index = _notifications.indexWhere((n) => n.id == notificationId);
       if (index != -1) {
         _notifications[index] = _notifications[index].copyWith(isRead: true);
@@ -77,12 +127,10 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Bildirimi sil
   Future<void> deleteNotification(String notificationId) async {
     try {
       await _firebaseService.deleteNotification(notificationId);
 
-      // Local state'den kaldır
       _notifications.removeWhere((n) => n.id == notificationId);
       notifyListeners();
     } catch (e) {
@@ -90,7 +138,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Tüm bildirimleri okundu olarak işaretle
   Future<void> markAllAsRead() async {
     try {
       for (final notification in _notifications) {
@@ -99,7 +146,6 @@ class NotificationProvider extends ChangeNotifier {
         }
       }
 
-      // Local state'i güncelle
       _notifications =
           _notifications.map((n) => n.copyWith(isRead: true)).toList();
       notifyListeners();
@@ -108,7 +154,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Tüm bildirimleri sil
   Future<void> deleteAllNotifications() async {
     try {
       for (final notification in _notifications) {
@@ -122,7 +167,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Bildirim tercihlerini toggle et
   Future<void> toggleNotificationType(String type) async {
     NotificationPreferences newPreferences;
 
@@ -136,27 +180,22 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Bildirimleri filtrele
   List<NotificationModel> getFilteredNotifications(NotificationType? type) {
     if (type == null) return _notifications;
     return _notifications.where((n) => n.type == type).toList();
   }
 
-  // Okunmamış bildirimleri getir
   List<NotificationModel> get unreadNotifications {
     return _notifications.where((n) => !n.isRead).toList();
   }
 
-  // Okunmuş bildirimleri getir
   List<NotificationModel> get readNotifications {
     return _notifications.where((n) => n.isRead).toList();
   }
 
-  // Sosyal bildirimleri başlat
   Future<void> startSocialNotifications() async {
     try {
       await _notificationService.setupSocialNotifications();
-      // Tercihleri güncelle
       final newPreferences = _preferences.copyWith(socialNotifications: true);
       await updatePreferences(newPreferences);
     } catch (e) {
@@ -164,11 +203,9 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Sosyal bildirimleri durdur
   Future<void> stopSocialNotifications() async {
     try {
       await _notificationService.stopSocialNotifications();
-      // Tercihleri güncelle
       final newPreferences = _preferences.copyWith(socialNotifications: false);
       await updatePreferences(newPreferences);
     } catch (e) {
@@ -176,7 +213,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Sosyal bildirim durumunu kontrol et
   Future<bool> checkSocialNotificationsStatus() async {
     try {
       return await _notificationService.areSocialNotificationsActive();
@@ -185,7 +221,6 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
-  // Private helper methods
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
@@ -201,5 +236,9 @@ class NotificationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Provider dispose
+  @override
+  void dispose() {
+    _unreadSubscription?.cancel();
+    super.dispose();
+  }
 }

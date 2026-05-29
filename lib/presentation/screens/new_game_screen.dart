@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:backgammon_score_tracker/core/widgets/background_board.dart';
+import 'package:backgammon_score_tracker/core/constants/layout_constants.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -487,7 +488,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 400;
+    final isSmallScreen = MediaQuery.of(context).size.width < kCompactWidth;
 
     return Scaffold(
       appBar: AppBar(

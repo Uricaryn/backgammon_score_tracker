@@ -6,6 +6,11 @@ import 'package:backgammon_score_tracker/core/constants/api_keys.dart';
 import 'package:backgammon_score_tracker/core/services/cloud_functions_safe_service.dart';
 
 class SecurityService {
+  static const Set<String> _validPackageNames = {
+    'com.uricaryn.backgammon_score_tracker',
+    'com.onuranatca.tavlaskor',
+  };
+
   static final SecurityService _instance = SecurityService._internal();
   factory SecurityService() => _instance;
   SecurityService._internal();
@@ -86,7 +91,7 @@ class SecurityService {
       final packageInfo = await PackageInfo.fromPlatform();
 
       // Gerçek uygulama paket adı kontrolü
-      if (packageInfo.packageName != 'com.uricaryn.backgammon_score_tracker') {
+      if (!_validPackageNames.contains(packageInfo.packageName)) {
         return false;
       }
 

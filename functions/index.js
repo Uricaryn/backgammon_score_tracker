@@ -1173,7 +1173,7 @@ exports.verifyPremiumPurchase = functions.https.onCall(async (data, context) => 
     throw new functions.https.HttpsError('unauthenticated', 'Kullanıcı giriş yapmamış');
   }
 
-  const { purchaseId, productId, purchaseToken, platform } = data;
+  const { purchaseId, productId, purchaseToken, receiptData, platform } = data;
   const userId = context.auth.uid;
 
   try {
@@ -1182,7 +1182,6 @@ exports.verifyPremiumPurchase = functions.https.onCall(async (data, context) => 
       const verificationResult = await verifyGooglePlayPurchase(purchaseToken, productId);
       
       if (verificationResult.valid) {
-        // Premium durumunu güncelle
         await updatePremiumStatus(userId, productId, purchaseId, verificationResult);
         return { success: true, message: 'Premium başarıyla aktifleştirildi' };
       } else {
@@ -1190,12 +1189,20 @@ exports.verifyPremiumPurchase = functions.https.onCall(async (data, context) => 
       }
     }
     
-    // Apple App Store doğrulama (iOS)
-    else if (platform === 'ios' && purchaseId) {
-      const verificationResult = await verifyAppStorePurchase(purchaseId, productId);
+    // Apple App Store doğrulama (iOS) — receipt JWS or transaction id
+    else if (platform === 'ios' && (purchaseId || receiptData)) {
+      const verificationResult = await verifyAppStorePurchase(
+        purchaseId || receiptData,
+        productId,
+      );
       
       if (verificationResult.valid) {
-        await updatePremiumStatus(userId, productId, purchaseId, verificationResult);
+        await updatePremiumStatus(
+          userId,
+          productId,
+          purchaseId || `ios_${Date.now()}`,
+          verificationResult,
+        );
         return { success: true, message: 'Premium başarıyla aktifleştirildi' };
       } else {
         throw new functions.https.HttpsError('invalid-argument', 'Geçersiz satın alma');
@@ -1208,6 +1215,9 @@ exports.verifyPremiumPurchase = functions.https.onCall(async (data, context) => 
 
   } catch (error) {
     console.error('Premium doğrulama hatası:', error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
     throw new functions.https.HttpsError('internal', 'Premium doğrulama hatası');
   }
 });
@@ -1270,7 +1280,7 @@ async function updatePremiumStatus(userId, productId, purchaseId, verificationRe
     productId: productId,
     purchaseId: purchaseId,
     purchaseTime: admin.firestore.Timestamp.now(),
-    amount: productId === 'premium_monthly' ? 19.99 : 149.99,
+    amount: productId === 'premium_monthly' ? 49.99 : 149.99,
     currency: 'TRY',
     platform: productId.includes('ios') ? 'ios' : 'android',
     verified: true
@@ -1392,7 +1402,11 @@ exports.checkDeviceSecurity = functions.https.onCall(async (data, context) => {
     const db = admin.firestore();
     
     // Paket adı kontrolü
-    if (packageName !== 'com.uricaryn.backgammon_score_tracker') {
+    const validPackageNames = [
+      'com.uricaryn.backgammon_score_tracker',
+      'com.onuranatca.tavlaskor',
+    ];
+    if (!validPackageNames.includes(packageName)) {
       return { isSecure: false, reason: 'Geçersiz paket adı' };
     }
     

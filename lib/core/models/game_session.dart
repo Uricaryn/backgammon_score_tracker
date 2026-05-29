@@ -12,6 +12,8 @@ class GameSession {
     required this.state,
     this.tournamentId,
     this.matchId,
+    this.participantIds = const [],
+    this.awayPlayers = const [],
   });
 
   final String id;
@@ -24,6 +26,8 @@ class GameSession {
   final GameState state;
   final String? tournamentId;
   final String? matchId;
+  final List<String> participantIds;
+  final List<String> awayPlayers;
 
   GameSession copyWith({
     String? id,
@@ -36,6 +40,8 @@ class GameSession {
     GameState? state,
     String? tournamentId,
     String? matchId,
+    List<String>? participantIds,
+    List<String>? awayPlayers,
   }) {
     return GameSession(
       id: id ?? this.id,
@@ -48,6 +54,8 @@ class GameSession {
       state: state ?? this.state,
       tournamentId: tournamentId ?? this.tournamentId,
       matchId: matchId ?? this.matchId,
+      participantIds: participantIds ?? this.participantIds,
+      awayPlayers: awayPlayers ?? this.awayPlayers,
     );
   }
 
@@ -63,6 +71,8 @@ class GameSession {
       'state': state.toMap(),
       if (tournamentId != null) 'tournamentId': tournamentId,
       if (matchId != null) 'matchId': matchId,
+      'participantIds': participantIds,
+      'awayPlayers': awayPlayers,
     };
   }
 
@@ -78,6 +88,23 @@ class GameSession {
       state: GameState.fromMap((map['state'] as Map<String, dynamic>?) ?? {}),
       tournamentId: map['tournamentId'] as String?,
       matchId: map['matchId'] as String?,
+      participantIds: List<String>.from(
+        (map['participantIds'] as List<dynamic>?) ?? _legacyParticipantIds(map),
+      ),
+      awayPlayers: List<String>.from(
+        (map['awayPlayers'] as List<dynamic>?) ??
+            (map['leftPlayers'] as List<dynamic>?) ??
+            <dynamic>[],
+      ),
     );
+  }
+
+  static List<String> _legacyParticipantIds(Map<String, dynamic> map) {
+    final ids = <String>[];
+    final w = map['playerWhiteId'] as String? ?? '';
+    final b = map['playerBlackId'] as String? ?? '';
+    if (w.isNotEmpty) ids.add(w);
+    if (b.isNotEmpty) ids.add(b);
+    return ids;
   }
 }

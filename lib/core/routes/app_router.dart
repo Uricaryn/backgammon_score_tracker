@@ -15,6 +15,9 @@ import 'package:backgammon_score_tracker/presentation/screens/username_setup_scr
 import 'package:backgammon_score_tracker/presentation/screens/email_verification_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/game_lobby_screen.dart';
 import 'package:backgammon_score_tracker/presentation/screens/live_game_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/players_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/profile_screen.dart';
+import 'package:backgammon_score_tracker/presentation/screens/edit_game_screen.dart';
 import 'package:backgammon_score_tracker/core/services/firebase_service.dart';
 
 class AppRouter {
@@ -37,6 +40,11 @@ class AppRouter {
   static const String emailVerification = '/email-verification';
   static const String gameLobby = '/game-lobby';
   static const String liveGame = '/live-game';
+  static const String players = '/players';
+  static const String profile = '/profile';
+  static const String editGame = '/edit-game';
+
+  static final FirebaseService _firebaseService = FirebaseService();
 
   // İstatistik sayfaları listesi
   static const List<String> _statisticsRoutes = [
@@ -50,8 +58,7 @@ class AppRouter {
 
   // Misafir kullanıcı kontrolü
   static bool _isGuestUser() {
-    final firebaseService = FirebaseService();
-    return firebaseService.isCurrentUserGuest();
+    return _firebaseService.isCurrentUserGuest();
   }
 
   // Misafir kullanıcılar için login sayfasına yönlendirme
@@ -144,6 +151,21 @@ class AppRouter {
         final roomId = args['roomId'] as String? ?? '';
         return MaterialPageRoute(
           builder: (_) => LiveGameScreen(roomId: roomId),
+        );
+      case players:
+        return MaterialPageRoute(builder: (_) => const PlayersScreen());
+      case profile:
+        return MaterialPageRoute(builder: (_) => const ProfileScreen());
+      case editGame:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        return MaterialPageRoute(
+          builder: (_) => EditGameScreen(
+            gameId: args['gameId'] as String? ?? '',
+            player1: args['player1'] as String? ?? '',
+            player2: args['player2'] as String? ?? '',
+            player1Score: args['player1Score'] as int? ?? 0,
+            player2Score: args['player2Score'] as int? ?? 0,
+          ),
         );
       default:
         return MaterialPageRoute(

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:backgammon_score_tracker/core/models/game_state.dart';
-import 'package:backgammon_score_tracker/presentation/widgets/game_dice_panel.dart'
-    show Dice3D;
+import 'package:backgammon_score_tracker/presentation/widgets/board/package_dice_panel.dart';
 
 /// Shown at the start of every game while both players roll their opening die.
 ///
@@ -229,15 +227,7 @@ class _DieSlot extends StatelessWidget {
         ),
         const SizedBox(height: 3),
         if (value != null)
-          Dice3D(value: value!, size: 40)
-              .animate()
-              .scale(
-                duration: 400.ms,
-                begin: const Offset(0.3, 0.3),
-                end: const Offset(1.0, 1.0),
-                curve: Curves.elasticOut,
-              )
-              .fadeIn(duration: 200.ms)
+          PackageDieFace(value: value!, size: 44, animateEntrance: true)
         else
           Container(
             width: 40,

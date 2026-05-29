@@ -32,7 +32,7 @@ val flutterVersionName =
 android {
     namespace = "com.uricaryn.backgammon_score_tracker"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -50,6 +50,12 @@ android {
         targetSdk = 36
         versionCode = flutterVersionCode
         versionName = flutterVersionName
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 
     signingConfigs {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:backgammon_score_tracker/core/theme/app_theme_extensions.dart';
 
 class AppTheme {
   // Light Theme Colors
@@ -125,6 +126,7 @@ class AppTheme {
           centerTitle: true,
         ),
         scaffoldBackgroundColor: backgroundColor,
+        extensions: const [AppThemeExtensions.light],
       );
 
   static ThemeData get darkTheme => ThemeData(
@@ -143,6 +145,7 @@ class AppTheme {
         scaffoldBackgroundColor: darkBackgroundColor,
         shadowColor: Colors.black.withValues(alpha: 0.2),
         dividerColor: darkOutlineColor.withValues(alpha: 0.3),
+        extensions: const [AppThemeExtensions.dark],
       );
 
   // Backgammon Board Colors based on theme

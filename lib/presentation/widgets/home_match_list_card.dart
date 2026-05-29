@@ -8,6 +8,7 @@ class HomeMatchListCard extends StatelessWidget {
   final bool isGuestUser;
   final ScrollController scrollController;
   final Function(String) onDeleteGame;
+  final bool expandVertically;
 
   const HomeMatchListCard({
     super.key,
@@ -15,6 +16,7 @@ class HomeMatchListCard extends StatelessWidget {
     required this.isGuestUser,
     required this.scrollController,
     required this.onDeleteGame,
+    this.expandVertically = false,
   });
 
   @override
@@ -94,23 +96,36 @@ class HomeMatchListCard extends StatelessWidget {
         return _buildEmptyState(context);
       }
 
-      return Container(
-        constraints: const BoxConstraints(maxHeight: 400),
-        child: ListView.builder(
-          controller: scrollController,
-          physics: const ClampingScrollPhysics(),
-          itemCount: games.length,
-          // ✅ Add caching for better performance
-          cacheExtent: 200.0,
-          itemBuilder: (context, index) {
-            final data = games[index];
-            return _MatchListItem(
-              gameData: data,
-              onDeleteGame: onDeleteGame,
+      return expandVertically
+          ? ListView.builder(
+              controller: scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: games.length,
+              cacheExtent: 200.0,
+              itemBuilder: (context, index) {
+                final data = games[index];
+                return _MatchListItem(
+                  gameData: data,
+                  onDeleteGame: onDeleteGame,
+                );
+              },
+            )
+          : Container(
+              constraints: const BoxConstraints(maxHeight: 400),
+              child: ListView.builder(
+                controller: scrollController,
+                physics: const ClampingScrollPhysics(),
+                itemCount: games.length,
+                cacheExtent: 200.0,
+                itemBuilder: (context, index) {
+                  final data = games[index];
+                  return _MatchListItem(
+                    gameData: data,
+                    onDeleteGame: onDeleteGame,
+                  );
+                },
+              ),
             );
-          },
-        ),
-      );
     }
 
     return const Center(child: CircularProgressIndicator());
